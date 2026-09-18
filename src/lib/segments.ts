@@ -36,7 +36,7 @@ type Grid = Map<string, number[]>;
 function buildGrid(points: TrackPoint[]): Grid {
   const grid: Grid = new Map();
   for (let i = 0; i < points.length; i++) {
-    const key = `${Math.round(points[i].lat / CELL)}:${Math.round(points[i].lon / CELL)}`;
+    const key = `${Math.round(points[i]!.lat / CELL)}:${Math.round(points[i]!.lon / CELL)}`;
     const bucket = grid.get(key);
     if (bucket) bucket.push(i);
     else grid.set(key, [i]);
@@ -54,7 +54,7 @@ function nearestIndex(grid: Grid, points: TrackPoint[], lat: number, lon: number
       const bucket = grid.get(`${gy + dy}:${gx + dx}`);
       if (!bucket) continue;
       for (const i of bucket) {
-        const dist = haversine(lat, lon, points[i].lat, points[i].lon);
+        const dist = haversine(lat, lon, points[i]!.lat, points[i]!.lon);
         if (dist < bestDist) {
           bestDist = dist;
           best = i;
@@ -69,14 +69,14 @@ function nearestIndex(grid: Grid, points: TrackPoint[], lat: number, lon: number
 function smooth(matches: Int32Array, ref: TrackPoint[]): void {
   let i = 0;
   while (i < matches.length) {
-    if (matches[i] >= 0) {
+    if (matches[i]! >= 0) {
       i++;
       continue;
     }
     let j = i;
-    while (j < matches.length && matches[j] < 0) j++;
-    const before = i > 0 ? matches[i - 1] : -1;
-    const after = j < matches.length ? matches[j] : -1;
+    while (j < matches.length && matches[j]! < 0) j++;
+    const before = i > 0 ? matches[i - 1]! : -1;
+    const after = j < matches.length ? matches[j]! : -1;
     const gapLength = (ref[Math.min(j, ref.length - 1)]?.d ?? 0) - (ref[i]?.d ?? 0);
     if (before >= 0 && after >= 0 && gapLength <= GAP_FILL) {
       for (let k = i; k < j; k++) {
@@ -93,8 +93,8 @@ function effortFor(
   from: number,
   to: number,
 ): Omit<SegmentEffort, "delta" | "isBest"> {
-  const a = track.points[Math.min(from, to)];
-  const b = track.points[Math.max(from, to)];
+  const a = track.points[Math.min(from, to)]!;
+  const b = track.points[Math.max(from, to)]!;
   const distance = Math.max(0, b.d - a.d);
   const hasTime = a.t > 0 && b.t > 0 && b.t > a.t;
   const duration = hasTime ? (b.t - a.t) / 1000 : 0;
@@ -126,7 +126,7 @@ export function findCommonSegments(tracks: Track[]): CommonSegment[] {
     const grid = buildGrid(track.points);
     const matches = new Int32Array(ref.length).fill(-1);
     for (let i = 0; i < ref.length; i++) {
-      matches[i] = nearestIndex(grid, track.points, ref[i].lat, ref[i].lon);
+      matches[i] = nearestIndex(grid, track.points, ref[i]!.lat, ref[i]!.lon);
     }
     smooth(matches, ref);
     matchesByTrack.set(track.id, matches);
@@ -137,7 +137,7 @@ export function findCommonSegments(tracks: Track[]): CommonSegment[] {
   for (let i = 0; i < ref.length; i++) {
     const ids: string[] = [];
     for (const track of others) {
-      if ((matchesByTrack.get(track.id) as Int32Array)[i] >= 0) ids.push(track.id);
+      if ((matchesByTrack.get(track.id) as Int32Array)[i]! >= 0) ids.push(track.id);
     }
     signatures[i] = ids.join("|");
   }
@@ -148,8 +148,8 @@ export function findCommonSegments(tracks: Track[]): CommonSegment[] {
     const ended = i === ref.length || signatures[i] !== signatures[start];
     if (!ended) continue;
     const end = i - 1;
-    const signature = signatures[start];
-    const length = ref[end].d - ref[start].d;
+    const signature = signatures[start]!;
+    const length = ref[end]!.d - ref[start]!.d;
     if (signature && length >= MIN_SEGMENT_LENGTH) {
       const ids = signature.split("|");
       const efforts: Array<Omit<SegmentEffort, "delta" | "isBest">> = [
@@ -159,8 +159,8 @@ export function findCommonSegments(tracks: Track[]): CommonSegment[] {
       for (const id of ids) {
         const track = others.find((t) => t.id === id)!;
         const matches = matchesByTrack.get(id) as Int32Array;
-        const from = matches[start];
-        const to = matches[end];
+        const from = matches[start]!;
+        const to = matches[end]!;
         // Opposite direction or implausible match -> discard the segment for safety.
         if (to <= from) {
           valid = false;
@@ -179,15 +179,15 @@ export function findCommonSegments(tracks: Track[]): CommonSegment[] {
         const bestTime = timed.length ? Math.min(...timed.map((e) => e.duration)) : 0;
         const path: Array<[number, number]> = [];
         const step = Math.max(1, Math.floor((end - start) / 400));
-        for (let k = start; k <= end; k += step) path.push([ref[k].lat, ref[k].lon]);
-        path.push([ref[end].lat, ref[end].lon]);
+        for (let k = start; k <= end; k += step) path.push([ref[k]!.lat, ref[k]!.lon]);
+        path.push([ref[end]!.lat, ref[end]!.lon]);
 
         segments.push({
           id: `seg-${start}-${end}`,
           index: segments.length + 1,
           distance: length,
           elevationGain: elevationGain(ref, start, end),
-          avgGrade: ((ref[end].ele - ref[start].ele) / Math.max(1, length)) * 100,
+          avgGrade: ((ref[end]!.ele - ref[start]!.ele) / Math.max(1, length)) * 100,
           path,
           efforts: efforts
             .map((e) => ({

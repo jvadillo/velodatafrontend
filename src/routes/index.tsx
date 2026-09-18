@@ -61,7 +61,7 @@ function Index() {
     const files = Array.from(fileList);
 
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+      const file = files[i]!;
       try {
         const text = await file.text();
         parsed.push(parseGpx(text, file.name, i));
@@ -74,7 +74,7 @@ function Index() {
       const combined = [...prev, ...parsed];
       return combined.map((track, i) => ({
         ...track,
-        color: TRACK_PALETTE[i % TRACK_PALETTE.length],
+        color: TRACK_PALETTE[i % TRACK_PALETTE.length]!,
       }));
     });
     setErrors(problems);
@@ -103,7 +103,7 @@ function Index() {
     const pts = referenceTrack.points;
     const step = Math.max(1, Math.floor(pts.length / 800));
     const out: Array<[number, number]> = [];
-    for (let i = 0; i < pts.length; i += step) out.push([pts[i].lat, pts[i].lon]);
+    for (let i = 0; i < pts.length; i += step) out.push([pts[i]!.lat, pts[i]!.lon]);
     return out;
   }, [referenceTrack]);
 

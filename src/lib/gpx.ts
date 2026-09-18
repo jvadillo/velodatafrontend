@@ -90,11 +90,11 @@ export function parseGpx(xml: string, fileName: string, index: number): Track {
     id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
     name: nameNode?.trim() || fileName.replace(/\.gpx$/i, ""),
     fileName,
-    date: first.t || null,
-    color: TRACK_COLORS[index % TRACK_COLORS.length],
+    date: first!.t || null,
+    color: TRACK_COLORS[index % TRACK_COLORS.length]!,
     points,
-    distance: last.d,
-    duration: first.t && last.t ? (last.t - first.t) / 1000 : 0,
+    distance: last!.d,
+    duration: first!.t && last!.t ? (last!.t - first!.t) / 1000 : 0,
     elevationGain: elevationGain(points, 0, points.length - 1),
   };
 }
@@ -103,7 +103,7 @@ export function elevationGain(points: TrackPoint[], from: number, to: number): n
   let gain = 0;
   let ref = points[from]?.ele ?? 0;
   for (let i = from + 1; i <= to && i < points.length; i++) {
-    const e = points[i].ele;
+    const e = points[i]!.ele;
     if (e > ref + 1) {
       gain += e - ref;
       ref = e;
