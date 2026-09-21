@@ -51,6 +51,7 @@ function Index() {
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [openSegment, setOpenSegment] = useState<string | null>(null);
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFiles = useCallback(async (fileList: FileList | null) => {
