@@ -32,8 +32,9 @@ export default function SegmentMap({
         scrollWheelZoom: false,
       });
 
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
+        className: "map-tiles-dark",
       }).addTo(map);
 
       if (context && context.length > 1) {
