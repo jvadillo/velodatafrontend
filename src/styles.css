@@ -161,3 +161,12 @@
   }
 }
 
+
+/* Dim the OpenStreetMap tiles so the map matches the dark interface. */
+.leaflet-container .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.85) saturate(0.55);
+}
+
+.leaflet-container {
+  background: var(--elevated);
+}
