@@ -9,6 +9,7 @@ import {
   Timer,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 
 import {
