@@ -1,8 +1,14 @@
 import { useEffect, useRef } from "react";
 
+export interface MapHighlight {
+  path: Array<[number, number]>;
+  color: string;
+}
+
 interface SegmentMapProps {
   path: Array<[number, number]>;
   context?: Array<[number, number]>;
+  highlights?: MapHighlight[];
   color?: string;
   className?: string;
 }
@@ -13,6 +19,7 @@ interface SegmentMapProps {
 export default function SegmentMap({
   path,
   context,
+  highlights,
   color = "#f97316",
   className,
 }: SegmentMapProps) {
@@ -41,15 +48,31 @@ export default function SegmentMap({
         L.polyline(context, { color: "#94a3b8", weight: 2, opacity: 0.45 }).addTo(map);
       }
 
-      const line = L.polyline(path, { color, weight: 5, opacity: 0.95 }).addTo(map);
-      map.fitBounds(line.getBounds(), { padding: [24, 24] });
+      const line = L.polyline(path, { color, weight: 4, opacity: 0.7 }).addTo(map);
+      const bounds = line.getBounds();
+
+      if (highlights) {
+        for (const highlight of highlights) {
+          if (highlight.path.length < 2) continue;
+          const segmentLine = L.polyline(highlight.path, {
+            color: highlight.color,
+            weight: 9,
+            opacity: 0.95,
+            lineCap: "round",
+            lineJoin: "round",
+          }).addTo(map);
+          bounds.extend(segmentLine.getBounds());
+        }
+      }
+
+      map.fitBounds(bounds, { padding: [24, 24] });
     })();
 
     return () => {
       cancelled = true;
       map?.remove();
     };
-  }, [path, context, color]);
+  }, [path, context, highlights, color]);
 
   return <div ref={containerRef} className={className} />;
 }
