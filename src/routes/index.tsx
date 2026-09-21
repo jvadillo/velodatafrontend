@@ -218,7 +218,16 @@ function Index() {
               {tracks.map((track) => (
                 <article
                   key={track.id}
-                  className="rounded-xl border border-border bg-surface p-4"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedTrackId(track.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedTrackId(track.id);
+                    }
+                  }}
+                  className="cursor-pointer rounded-xl border border-border bg-surface p-4 transition-colors hover:border-primary/60 hover:bg-elevated"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
