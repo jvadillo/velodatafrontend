@@ -244,9 +244,10 @@ function Index() {
                     </div>
                     <button
                       aria-label="Quitar salida"
-                      onClick={() =>
-                        setTracks((prev) => prev.filter((t) => t.id !== track.id))
-                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTracks((prev) => prev.filter((t) => t.id !== track.id));
+                      }}
                       className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
                     >
                       <Trash2 className="size-4" />
