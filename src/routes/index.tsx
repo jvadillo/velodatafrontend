@@ -416,6 +416,157 @@ function Index() {
           </section>
         )}
       </main>
+
+      {selectedTrack && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/80 p-4 backdrop-blur-sm sm:p-8"
+          onClick={() => setSelectedTrackId(null)}
+        >
+          <div
+            role="dialog"
+            aria-label={`Detalle de ${selectedTrack.name}`}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-3xl rounded-2xl border border-border bg-surface shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-border/70 p-5">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: selectedTrack.color }}
+                  />
+                  <h3 className="truncate font-display text-lg">{selectedTrack.name}</h3>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {formatDate(selectedTrack.date)} · {selectedTrack.fileName}
+                </p>
+              </div>
+              <button
+                aria-label="Cerrar detalle"
+                onClick={() => setSelectedTrackId(null)}
+                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-elevated hover:text-foreground"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <dl className="grid grid-cols-2 gap-3 font-mono text-xs sm:grid-cols-4">
+                <Stat label="Dist." value={formatDistance(selectedTrack.distance)} />
+                <Stat label="Tiempo" value={formatDuration(selectedTrack.duration)} />
+                <Stat
+                  label="Desnivel"
+                  value={`${Math.round(selectedTrack.elevationGain)} m`}
+                />
+                <Stat
+                  label="Vel. media"
+                  value={
+                    selectedTrack.duration > 0
+                      ? `${((selectedTrack.distance / selectedTrack.duration) * 3.6).toFixed(1)} km/h`
+                      : "—"
+                  }
+                />
+              </dl>
+
+              <div className="mt-5">
+                <ClientOnly
+                  fallback={<div className="h-72 w-full animate-pulse rounded-xl bg-elevated" />}
+                >
+                  <Suspense
+                    fallback={
+                      <div className="h-72 w-full animate-pulse rounded-xl bg-elevated" />
+                    }
+                  >
+                    <SegmentMap
+                      path={selectedPath}
+                      color={selectedTrack.color}
+                      className="h-72 w-full overflow-hidden rounded-xl"
+                    />
+                  </Suspense>
+                </ClientOnly>
+              </div>
+
+              <h4 className="mt-6 font-display text-sm uppercase tracking-[0.22em] text-muted-foreground">
+                Tramos compartidos ({selectedSegments.length})
+              </h4>
+
+              {selectedSegments.length === 0 ? (
+                <p className="mt-3 rounded-lg border border-border bg-elevated/50 p-4 text-sm text-muted-foreground">
+                  Esta salida no comparte tramos con el resto de recorridos cargados.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {selectedSegments.map((segment) => {
+                    const mine = segment.efforts.find(
+                      (e) => e.trackId === selectedTrack.id,
+                    )!;
+                    return (
+                      <div
+                        key={segment.id}
+                        className="rounded-xl border border-border bg-elevated/40 p-4"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <p className="font-display text-base">Tramo {segment.index}</p>
+                          <p className="flex flex-wrap gap-x-4 font-mono text-xs text-muted-foreground">
+                            <span className="inline-flex items-center gap-1">
+                              <ArrowDownUp className="size-3.5" />
+                              {formatDistance(segment.distance)}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <Mountain className="size-3.5" />
+                              {Math.round(segment.elevationGain)} m D+
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <Gauge className="size-3.5" />
+                              {segment.avgGrade.toFixed(1)}%
+                            </span>
+                          </p>
+                        </div>
+                        <dl className="mt-3 grid grid-cols-3 gap-2 font-mono text-xs">
+                          <Stat
+                            label="Tu tiempo"
+                            value={mine.hasTime ? formatDuration(mine.duration) : "—"}
+                          />
+                          <Stat
+                            label="Dif. mejor"
+                            value={
+                              mine.isBest
+                                ? "Mejor"
+                                : mine.hasTime
+                                  ? formatDelta(mine.delta)
+                                  : "—"
+                            }
+                          />
+                          <Stat
+                            label="Vel. media"
+                            value={mine.speed ? `${mine.speed.toFixed(1)} km/h` : "—"}
+                          />
+                        </dl>
+                        <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+                          {segment.efforts
+                            .filter((e) => e.trackId !== selectedTrack.id)
+                            .map((e) => (
+                              <li key={e.trackId} className="flex items-center gap-2">
+                                <span
+                                  className="size-2 rounded-full"
+                                  style={{ backgroundColor: e.color }}
+                                />
+                                <span className="truncate">{e.trackName}</span>
+                                <span className="ml-auto font-mono">
+                                  {e.hasTime ? formatDuration(e.duration) : "—"}
+                                </span>
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
