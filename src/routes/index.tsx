@@ -108,6 +108,31 @@ function Index() {
     return out;
   }, [referenceTrack]);
 
+  const selectedTrack = useMemo(
+    () => tracks.find((t) => t.id === selectedTrackId) ?? null,
+    [tracks, selectedTrackId],
+  );
+
+  const selectedPath = useMemo<Array<[number, number]>>(() => {
+    if (!selectedTrack) return [];
+    const pts = selectedTrack.points;
+    const step = Math.max(1, Math.floor(pts.length / 900));
+    const out: Array<[number, number]> = [];
+    for (let i = 0; i < pts.length; i += step) out.push([pts[i]!.lat, pts[i]!.lon]);
+    const last = pts[pts.length - 1]!;
+    out.push([last.lat, last.lon]);
+    return out;
+  }, [selectedTrack]);
+
+  const selectedSegments = useMemo(
+    () =>
+      selectedTrack
+        ? segments.filter((s) => s.efforts.some((e) => e.trackId === selectedTrack.id))
+        : [],
+    [segments, selectedTrack],
+  );
+
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border/70 bg-surface/60 backdrop-blur">
