@@ -20,7 +20,7 @@ import {
   parseGpx,
   type Track,
 } from "@/lib/gpx";
-import { findCommonSegments } from "@/lib/segments";
+import { findCommonSegments, type SegmentEffort } from "@/lib/segments";
 
 const SegmentMap = lazy(() => import("@/components/SegmentMap"));
 
@@ -132,6 +132,21 @@ function Index() {
         : [],
     [segments, selectedTrack],
   );
+
+  const selectedHighlights = useMemo(
+    () =>
+      selectedTrack
+        ? selectedSegments.map((segment) => {
+            const mine = segment.efforts.find((e) => e.trackId === selectedTrack.id);
+            return {
+              path: segment.path,
+              color: mine ? effortRankColor(mine, segment.efforts) : "#94a3b8",
+            };
+          })
+        : [],
+    [selectedSegments, selectedTrack],
+  );
+
 
 
   return (
@@ -481,10 +496,27 @@ function Index() {
                     <SegmentMap
                       path={selectedPath}
                       color={selectedTrack.color}
+                      highlights={selectedHighlights}
                       className="h-72 w-full overflow-hidden rounded-xl"
                     />
                   </Suspense>
                 </ClientOnly>
+                {selectedSegments.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-1 w-4 rounded-full" style={{ backgroundColor: RANK_BEST }} />
+                      Mejor tiempo
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-1 w-4 rounded-full" style={{ backgroundColor: RANK_MIDDLE }} />
+                      Intermedio
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-1 w-4 rounded-full" style={{ backgroundColor: RANK_WORST }} />
+                      Peor tiempo
+                    </span>
+                  </div>
+                )}
               </div>
 
               <h4 className="mt-6 font-display text-sm uppercase tracking-[0.22em] text-muted-foreground">
@@ -570,6 +602,22 @@ function Index() {
       )}
     </div>
   );
+}
+
+const RANK_BEST = "#22c55e";
+const RANK_MIDDLE = "#f97316";
+const RANK_WORST = "#ef4444";
+
+/** Traffic-light rank of an effort within its segment: best / middle / worst time. */
+function effortRankColor(effort: SegmentEffort, all: SegmentEffort[]): string {
+  const timed = all.filter((e) => e.hasTime && e.duration > 0);
+  if (!effort.hasTime || timed.length === 0) return "#94a3b8";
+  if (timed.length === 1) return RANK_BEST;
+  const fastest = Math.min(...timed.map((e) => e.duration));
+  const slowest = Math.max(...timed.map((e) => e.duration));
+  if (effort.duration === fastest) return RANK_BEST;
+  if (effort.duration === slowest) return RANK_WORST;
+  return RANK_MIDDLE;
 }
 
 const TRACK_PALETTE = [
