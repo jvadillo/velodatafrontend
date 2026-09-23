@@ -11,6 +11,8 @@ interface SegmentMapProps {
   highlights?: MapHighlight[];
   color?: string;
   className?: string;
+  activePoint?: [number, number] | null;
+  onPathSelect?: (location: [number, number]) => void;
 }
 
 /**
@@ -22,8 +24,17 @@ export default function SegmentMap({
   highlights,
   color = "#f97316",
   className,
+  activePoint,
+  onPathSelect,
 }: SegmentMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<import("leaflet").Map | null>(null);
+  const markerRef = useRef<import("leaflet").CircleMarker | null>(null);
+  const onPathSelectRef = useRef(onPathSelect);
+
+  useEffect(() => {
+    onPathSelectRef.current = onPathSelect;
+  }, [onPathSelect]);
 
   useEffect(() => {
     let map: import("leaflet").Map | null = null;
@@ -38,6 +49,7 @@ export default function SegmentMap({
         attributionControl: false,
         scrollWheelZoom: false,
       });
+      mapRef.current = map;
 
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
@@ -49,6 +61,9 @@ export default function SegmentMap({
       }
 
       const line = L.polyline(path, { color, weight: 4, opacity: 0.7 }).addTo(map);
+      line.on("click", (event) => {
+        onPathSelectRef.current?.([event.latlng.lat, event.latlng.lng]);
+      });
       const bounds = line.getBounds();
 
       if (highlights) {
@@ -70,9 +85,40 @@ export default function SegmentMap({
 
     return () => {
       cancelled = true;
+      markerRef.current = null;
+      mapRef.current = null;
       map?.remove();
     };
   }, [path, context, highlights, color]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const map = mapRef.current;
+      if (!map || !activePoint) {
+        markerRef.current?.remove();
+        markerRef.current = null;
+        return;
+      }
+      const L = (await import("leaflet")).default;
+      if (cancelled || !mapRef.current) return;
+      if (markerRef.current) {
+        markerRef.current.setLatLng(activePoint);
+      } else {
+        markerRef.current = L.circleMarker(activePoint, {
+          radius: 7,
+          color,
+          weight: 3,
+          fillColor: "#ffffff",
+          fillOpacity: 1,
+          interactive: false,
+        }).addTo(map);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activePoint, color]);
 
   return <div ref={containerRef} className={className} />;
 }
