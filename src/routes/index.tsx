@@ -533,6 +533,17 @@ function Index() {
                     />
                   </Suspense>
                 </ClientOnly>
+                <div className="mt-3">
+                  <Suspense
+                    fallback={<div className="h-48 w-full animate-pulse rounded-lg bg-elevated" />}
+                  >
+                    <ElevationProfile
+                      points={selectedTrack.points}
+                      activeIndex={activePointIndex}
+                      onActiveIndexChange={setActivePointIndex}
+                    />
+                  </Suspense>
+                </div>
                 {selectedSegments.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
@@ -549,17 +560,6 @@ function Index() {
                     </span>
                   </div>
                 )}
-                <div className="mt-3">
-                  <Suspense
-                    fallback={<div className="h-48 w-full animate-pulse rounded-lg bg-elevated" />}
-                  >
-                    <ElevationProfile
-                      points={selectedTrack.points}
-                      activeIndex={activePointIndex}
-                      onActiveIndexChange={setActivePointIndex}
-                    />
-                  </Suspense>
-                </div>
               </div>
 
               <h4 className="mt-6 font-display text-sm uppercase tracking-[0.22em] text-muted-foreground">
