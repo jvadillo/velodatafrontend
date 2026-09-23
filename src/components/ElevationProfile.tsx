@@ -12,6 +12,37 @@ const WIDTH = 720;
 const HEIGHT = 190;
 const PADDING = { top: 18, right: 18, bottom: 32, left: 48 };
 
+function pointMetrics(points: TrackPoint[], index: number) {
+  const point = points[index];
+  if (!point) return null;
+
+  const windowDistance = 30;
+  let from = index;
+  let to = index;
+
+  while (from > 0 && point.d - (points[from]?.d ?? point.d) < windowDistance) from -= 1;
+  while (
+    to < points.length - 1 &&
+    (points[to]?.d ?? point.d) - point.d < windowDistance
+  ) {
+    to += 1;
+  }
+
+  const start = points[from];
+  const end = points[to];
+  if (!start || !end) return null;
+
+  const distance = end.d - start.d;
+  const elapsedSeconds = (end.t - start.t) / 1000;
+  const speed =
+    start.t > 0 && end.t > 0 && elapsedSeconds > 0.5 && distance > 1
+      ? (distance / elapsedSeconds) * 3.6
+      : null;
+  const grade = distance > 1 ? ((end.ele - start.ele) / distance) * 100 : null;
+
+  return { speed, grade };
+}
+
 export default function ElevationProfile({
   points,
   activeIndex,
@@ -46,6 +77,7 @@ export default function ElevationProfile({
   if (!profile) return null;
 
   const activePoint = activeIndex === null ? null : points[activeIndex] ?? null;
+  const activeMetrics = activeIndex === null ? null : pointMetrics(points, activeIndex);
   const distanceTicks = Array.from({ length: 5 }, (_, index) => index / 4);
   const elevationTicks = Array.from({ length: 3 }, (_, index) => index / 2);
 
@@ -78,13 +110,16 @@ export default function ElevationProfile({
 
   return (
     <div className="rounded-lg border border-border bg-elevated/35 px-2 pb-2 pt-3 sm:px-3">
-      <div className="mb-1 flex items-center justify-between px-2">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-2">
         <p className="font-display text-xs uppercase tracking-[0.18em] text-muted-foreground">
           Perfil del recorrido
         </p>
-        <p className="min-h-4 font-mono text-[11px] text-foreground" aria-live="polite">
+        <p
+          className="min-h-4 text-right font-mono text-[11px] text-foreground"
+          aria-live="polite"
+        >
           {activePoint
-            ? `${(activePoint.d / 1000).toFixed(2)} km · ${Math.round(activePoint.ele)} m`
+            ? `${(activePoint.d / 1000).toFixed(2)} km · ${Math.round(activePoint.ele)} m · ${activeMetrics?.speed === null || activeMetrics?.speed === undefined ? "— km/h" : `${activeMetrics.speed.toFixed(1)} km/h`} · ${activeMetrics?.grade === null || activeMetrics?.grade === undefined ? "— %" : `${activeMetrics.grade >= 0 ? "+" : ""}${activeMetrics.grade.toFixed(1)} %`}`
             : "Recorre el perfil o pulsa la ruta"}
         </p>
       </div>
