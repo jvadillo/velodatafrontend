@@ -76,6 +76,9 @@ export default function SegmentMap({
             lineCap: "round",
             lineJoin: "round",
           }).addTo(map);
+          segmentLine.on("click", (event) => {
+            onPathSelectRef.current?.([event.latlng.lat, event.latlng.lng]);
+          });
           bounds.extend(segmentLine.getBounds());
         }
       }
