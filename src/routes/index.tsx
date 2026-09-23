@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ClientOnly } from "@tanstack/react-router";
-import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownUp,
   Bike,
@@ -18,11 +18,13 @@ import {
   formatDistance,
   formatDuration,
   parseGpx,
+  haversine,
   type Track,
 } from "@/lib/gpx";
 import { findCommonSegments, type SegmentEffort } from "@/lib/segments";
 
 const SegmentMap = lazy(() => import("@/components/SegmentMap"));
+const ElevationProfile = lazy(() => import("@/components/ElevationProfile"));
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -53,6 +55,7 @@ function Index() {
   const [dragging, setDragging] = useState(false);
   const [openSegment, setOpenSegment] = useState<string | null>(null);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+  const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFiles = useCallback(async (fileList: FileList | null) => {
@@ -146,6 +149,33 @@ function Index() {
         : [],
     [selectedSegments, selectedTrack],
   );
+
+  useEffect(() => {
+    setActivePointIndex(null);
+  }, [selectedTrackId]);
+
+  const selectNearestTrackPoint = useCallback(
+    ([lat, lon]: [number, number]) => {
+      if (!selectedTrack || selectedTrack.points.length === 0) return;
+      let closestIndex = 0;
+      let closestDistance = Number.POSITIVE_INFINITY;
+      selectedTrack.points.forEach((point, index) => {
+        const distance = haversine(lat, lon, point.lat, point.lon);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestIndex = index;
+        }
+      });
+      setActivePointIndex(closestIndex);
+    },
+    [selectedTrack],
+  );
+
+  const activeMapPoint = useMemo<[number, number] | null>(() => {
+    if (!selectedTrack || activePointIndex === null) return null;
+    const point = selectedTrack.points[activePointIndex];
+    return point ? [point.lat, point.lon] : null;
+  }, [activePointIndex, selectedTrack]);
 
 
 
@@ -497,10 +527,23 @@ function Index() {
                       path={selectedPath}
                       color={selectedTrack.color}
                       highlights={selectedHighlights}
+                      activePoint={activeMapPoint}
+                      onPathSelect={selectNearestTrackPoint}
                       className="h-72 w-full overflow-hidden rounded-xl"
                     />
                   </Suspense>
                 </ClientOnly>
+                <div className="mt-3">
+                  <Suspense
+                    fallback={<div className="h-48 w-full animate-pulse rounded-lg bg-elevated" />}
+                  >
+                    <ElevationProfile
+                      points={selectedTrack.points}
+                      activeIndex={activePointIndex}
+                      onActiveIndexChange={setActivePointIndex}
+                    />
+                  </Suspense>
+                </div>
                 {selectedSegments.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
