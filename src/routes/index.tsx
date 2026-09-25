@@ -53,6 +53,7 @@ function Index() {
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [showUploader, setShowUploader] = useState(true);
   const [openSegment, setOpenSegment] = useState<string | null>(null);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
@@ -83,6 +84,7 @@ function Index() {
       }));
     });
     setErrors(problems);
+    if (parsed.length > 0) setShowUploader(false);
     setBusy(false);
   }, []);
 
@@ -154,6 +156,23 @@ function Index() {
     setActivePointIndex(null);
   }, [selectedTrackId]);
 
+  const summary = useMemo(() => {
+    const totalDistance = tracks.reduce((sum, t) => sum + t.distance, 0);
+    const totalDuration = tracks.reduce((sum, t) => sum + t.duration, 0);
+    const totalElevation = tracks.reduce((sum, t) => sum + t.elevationGain, 0);
+    const avgSpeed = totalDuration > 0 ? (totalDistance / totalDuration) * 3.6 : null;
+    const maxSpeed = tracks.reduce((max, t) => Math.max(max, trackMaxSpeed(t)), 0);
+    const dates = tracks.map((t) => t.date).filter((d): d is number => d !== null);
+    return {
+      totalDistance,
+      totalDuration,
+      totalElevation,
+      avgSpeed,
+      maxSpeed: maxSpeed > 0 ? maxSpeed : null,
+      lastDate: dates.length ? Math.max(...dates) : null,
+    };
+  }, [tracks]);
+
   const selectNearestTrackPoint = useCallback(
     ([lat, lon]: [number, number]) => {
       if (!selectedTrack || selectedTrack.points.length === 0) return;
@@ -194,6 +213,13 @@ function Index() {
               Comparador de rendimiento para rutas GPX de carretera
             </p>
           </div>
+          <button
+            onClick={() => setShowUploader((v) => !v)}
+            className="ml-auto inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Upload className="size-4" />
+            Añadir tracks
+          </button>
         </div>
       </header>
 
@@ -209,6 +235,7 @@ function Index() {
           </p>
         </section>
 
+        {(tracks.length === 0 || showUploader) && (
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -244,6 +271,7 @@ function Index() {
             }}
           />
         </div>
+        )}
 
         {busy && (
           <p className="mt-4 text-sm text-muted-foreground">Analizando recorridos…</p>
@@ -255,6 +283,34 @@ function Index() {
               <li key={error}>{error}</li>
             ))}
           </ul>
+        )}
+
+        {tracks.length > 0 && (
+          <section className="mt-10 rounded-2xl border border-border bg-surface/60 p-5">
+            <SectionTitle>Resumen</SectionTitle>
+            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 font-mono sm:grid-cols-4">
+              <SummaryStat label="Salidas" value={String(tracks.length)} />
+              <SummaryStat
+                label="Km totales"
+                value={`${(summary.totalDistance / 1000).toFixed(1)} km`}
+              />
+              <SummaryStat label="Tiempo total" value={formatDuration(summary.totalDuration)} />
+              <SummaryStat
+                label="Desnivel acumulado"
+                value={`${Math.round(summary.totalElevation)} m`}
+              />
+              <SummaryStat
+                label="Velocidad media"
+                value={summary.avgSpeed !== null ? `${summary.avgSpeed.toFixed(1)} km/h` : "—"}
+              />
+              <SummaryStat
+                label="Velocidad máxima"
+                value={summary.maxSpeed !== null ? `${summary.maxSpeed.toFixed(1)} km/h` : "—"}
+              />
+              <SummaryStat label="Tramos comunes" value={String(segments.length)} />
+              <SummaryStat label="Última salida" value={formatDate(summary.lastDate)} />
+            </dl>
+          </section>
         )}
 
         {tracks.length > 0 && (
@@ -673,6 +729,35 @@ const TRACK_PALETTE = [
   "#34d399",
   "#fb7185",
 ];
+
+/** Highest sustained speed (km/h) in a track, from timestamps. 0 if untimed. */
+function trackMaxSpeed(track: Track): number {
+  let max = 0;
+  const pts = track.points;
+  for (let i = 1; i < pts.length; i++) {
+    const prev = pts[i - 1]!;
+    const cur = pts[i]!;
+    if (prev.t === 0 || cur.t === 0) continue;
+    const dt = (cur.t - prev.t) / 1000;
+    if (dt < 1 || dt > 30) continue;
+    const dist = cur.d - prev.d;
+    if (dist <= 1) continue;
+    const speed = (dist / dt) * 3.6;
+    if (speed > max) max = speed;
+  }
+  return max;
+}
+
+function SummaryStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-1 text-xl font-medium text-foreground">{value}</dd>
+    </div>
+  );
+}
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
