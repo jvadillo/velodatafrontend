@@ -25,6 +25,7 @@ import { findCommonSegments, type SegmentEffort } from "@/lib/segments";
 
 const SegmentMap = lazy(() => import("@/components/SegmentMap"));
 const ElevationProfile = lazy(() => import("@/components/ElevationProfile"));
+const SummaryChart = lazy(() => import("@/components/SummaryChart"));
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -173,6 +174,21 @@ function Index() {
     };
   }, [tracks]);
 
+  const summaryChartItems = useMemo(
+    () =>
+      tracks
+        .filter((track): track is Track & { date: number } => track.date !== null)
+        .map((track) => ({
+          id: track.id,
+          name: track.name,
+          date: track.date,
+          distance: track.distance,
+          duration: track.duration,
+          color: track.color,
+        })),
+    [tracks],
+  );
+
   const selectNearestTrackPoint = useCallback(
     ([lat, lon]: [number, number]) => {
       if (!selectedTrack || selectedTrack.points.length === 0) return;
@@ -310,6 +326,24 @@ function Index() {
               <SummaryStat label="Tramos comunes" value={String(segments.length)} />
               <SummaryStat label="Última salida" value={formatDate(summary.lastDate)} />
             </dl>
+            {summaryChartItems.length > 0 && (
+              <div className="mt-6">
+                <ClientOnly
+                  fallback={<div className="h-52 w-full animate-pulse rounded-lg bg-elevated" />}
+                >
+                  <Suspense
+                    fallback={<div className="h-52 w-full animate-pulse rounded-lg bg-elevated" />}
+                  >
+                    <SummaryChart items={summaryChartItems} />
+                  </Suspense>
+                </ClientOnly>
+                {summaryChartItems.length < tracks.length && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Algunas salidas no tienen fecha en el GPX y no aparecen en la gráfica.
+                  </p>
+                )}
+              </div>
+            )}
           </section>
         )}
 
