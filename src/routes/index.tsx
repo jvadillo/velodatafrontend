@@ -53,6 +53,7 @@ function Index() {
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [showUploader, setShowUploader] = useState(true);
   const [openSegment, setOpenSegment] = useState<string | null>(null);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
@@ -83,6 +84,7 @@ function Index() {
       }));
     });
     setErrors(problems);
+    if (parsed.length > 0) setShowUploader(false);
     setBusy(false);
   }, []);
 
@@ -154,6 +156,23 @@ function Index() {
     setActivePointIndex(null);
   }, [selectedTrackId]);
 
+  const summary = useMemo(() => {
+    const totalDistance = tracks.reduce((sum, t) => sum + t.distance, 0);
+    const totalDuration = tracks.reduce((sum, t) => sum + t.duration, 0);
+    const totalElevation = tracks.reduce((sum, t) => sum + t.elevationGain, 0);
+    const avgSpeed = totalDuration > 0 ? (totalDistance / totalDuration) * 3.6 : null;
+    const maxSpeed = tracks.reduce((max, t) => Math.max(max, trackMaxSpeed(t)), 0);
+    const dates = tracks.map((t) => t.date).filter((d): d is number => d !== null);
+    return {
+      totalDistance,
+      totalDuration,
+      totalElevation,
+      avgSpeed,
+      maxSpeed: maxSpeed > 0 ? maxSpeed : null,
+      lastDate: dates.length ? Math.max(...dates) : null,
+    };
+  }, [tracks]);
+
   const selectNearestTrackPoint = useCallback(
     ([lat, lon]: [number, number]) => {
       if (!selectedTrack || selectedTrack.points.length === 0) return;
@@ -194,6 +213,13 @@ function Index() {
               Comparador de rendimiento para rutas GPX de carretera
             </p>
           </div>
+          <button
+            onClick={() => setShowUploader((v) => !v)}
+            className="ml-auto inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Upload className="size-4" />
+            Añadir tracks
+          </button>
         </div>
       </header>
 
@@ -209,6 +235,7 @@ function Index() {
           </p>
         </section>
 
+        {(tracks.length === 0 || showUploader) && (
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -244,6 +271,7 @@ function Index() {
             }}
           />
         </div>
+        )}
 
         {busy && (
           <p className="mt-4 text-sm text-muted-foreground">Analizando recorridos…</p>
