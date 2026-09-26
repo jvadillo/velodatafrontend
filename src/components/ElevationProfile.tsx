@@ -6,6 +6,7 @@ interface ElevationProfileProps {
   points: TrackPoint[];
   activeIndex: number | null;
   onActiveIndexChange: (index: number) => void;
+  range?: [number, number] | null;
 }
 
 const WIDTH = 720;
@@ -47,6 +48,7 @@ export default function ElevationProfile({
   points,
   activeIndex,
   onActiveIndexChange,
+  range,
 }: ElevationProfileProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const gradientId = useId().replace(/:/g, "");
@@ -164,6 +166,16 @@ export default function ElevationProfile({
           );
         })}
 
+        {range && points[range[0]] && points[range[1]] && (
+          <rect
+            x={profile.x(Math.min(points[range[0]]!.d, points[range[1]]!.d))}
+            y={PADDING.top}
+            width={Math.abs(profile.x(points[range[1]]!.d) - profile.x(points[range[0]]!.d))}
+            height={profile.plotHeight}
+            fill="#38bdf8"
+            fillOpacity="0.18"
+          />
+        )}
         <polygon points={profile.area} fill={`url(#${gradientId})`} />
         <polyline
           points={profile.line}

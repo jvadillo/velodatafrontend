@@ -22,6 +22,7 @@ import {
   type Track,
 } from "@/lib/gpx";
 import { findCommonSegments, type SegmentEffort } from "@/lib/segments";
+import { buildManualSegment, manualEfforts, type ManualSegment } from "@/lib/manualSegments";
 
 const SegmentMap = lazy(() => import("@/components/SegmentMap"));
 const ElevationProfile = lazy(() => import("@/components/ElevationProfile"));
@@ -58,6 +59,12 @@ function Index() {
   const [openSegment, setOpenSegment] = useState<string | null>(null);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
+  const [manualSegments, setManualSegments] = useState<ManualSegment[]>([]);
+  const [draft, setDraft] = useState<{
+    start: number | null;
+    end: number | null;
+    name: string;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFiles = useCallback(async (fileList: FileList | null) => {
@@ -155,6 +162,7 @@ function Index() {
 
   useEffect(() => {
     setActivePointIndex(null);
+    setDraft(null);
   }, [selectedTrackId]);
 
   const summary = useMemo(() => {
@@ -211,6 +219,57 @@ function Index() {
     const point = selectedTrack.points[activePointIndex];
     return point ? [point.lat, point.lon] : null;
   }, [activePointIndex, selectedTrack]);
+
+  const selectedManual = useMemo(() => {
+    if (!selectedTrack) return [];
+    return manualSegments.flatMap((segment) => {
+      const efforts = manualEfforts(segment, tracks);
+      const mine = efforts.find((e) => e.trackId === selectedTrack.id);
+      return mine ? [{ segment, efforts, mine }] : [];
+    });
+  }, [manualSegments, tracks, selectedTrack]);
+
+  const draftValid =
+    !!draft &&
+    draft.start !== null &&
+    draft.end !== null &&
+    !!selectedTrack &&
+    Math.abs(
+      (selectedTrack.points[draft.end]?.d ?? 0) - (selectedTrack.points[draft.start]?.d ?? 0),
+    ) >= 100;
+
+  const saveDraft = () => {
+    if (!draftValid || !draft || !selectedTrack) return;
+    const name = draft.name.trim() || `Mi tramo ${manualSegments.length + 1}`;
+    setManualSegments((prev) => [
+      ...prev,
+      buildManualSegment(selectedTrack, draft.start!, draft.end!, name),
+    ]);
+    setDraft(null);
+  };
+
+  const mapHighlights = useMemo(() => {
+    const list = [
+      ...selectedHighlights,
+      ...selectedManual.map(({ segment, efforts, mine }) => ({
+        path: segment.path,
+        color: effortRankColor(mine, efforts),
+      })),
+    ];
+    if (selectedTrack && draft && draft.start !== null && draft.end !== null) {
+      const s = Math.min(draft.start, draft.end);
+      const e = Math.max(draft.start, draft.end);
+      const path: Array<[number, number]> = [];
+      const step = Math.max(1, Math.floor((e - s) / 300));
+      for (let k = s; k <= e; k += step) {
+        const p = selectedTrack.points[k]!;
+        path.push([p.lat, p.lon]);
+      }
+      list.push({ path, color: "#38bdf8" });
+    }
+    return list;
+  }, [selectedHighlights, selectedManual, selectedTrack, draft]);
+
 
 
 
@@ -605,6 +664,79 @@ function Index() {
               </dl>
 
               <div className="mt-5">
+                <div className="mb-3 rounded-lg border border-border bg-elevated/40 p-3 text-sm">
+                  {!draft ? (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-muted-foreground">
+                        Crea tus propios tramos y compáralos con el resto de salidas.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setDraft({ start: null, end: null, name: "" })}
+                        className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+                      >
+                        Definir tramo
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-muted-foreground">
+                        Sitúa el punto en el mapa o en el perfil y marca el inicio y el fin.
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <button
+                          type="button"
+                          disabled={activePointIndex === null}
+                          onClick={() => setDraft((d) => d && { ...d, start: activePointIndex })}
+                          className="rounded-md border border-border px-3 py-1.5 hover:bg-elevated disabled:opacity-40"
+                        >
+                          Marcar inicio aquí
+                        </button>
+                        <button
+                          type="button"
+                          disabled={activePointIndex === null}
+                          onClick={() => setDraft((d) => d && { ...d, end: activePointIndex })}
+                          className="rounded-md border border-border px-3 py-1.5 hover:bg-elevated disabled:opacity-40"
+                        >
+                          Marcar fin aquí
+                        </button>
+                        <span className="font-mono text-muted-foreground">
+                          {draft.start !== null
+                            ? `Inicio ${(selectedTrack.points[draft.start]!.d / 1000).toFixed(2)} km`
+                            : "Inicio —"}
+                          {" · "}
+                          {draft.end !== null
+                            ? `Fin ${(selectedTrack.points[draft.end]!.d / 1000).toFixed(2)} km`
+                            : "Fin —"}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <input
+                          value={draft.name}
+                          onChange={(e) => setDraft((d) => d && { ...d, name: e.target.value })}
+                          placeholder={`Mi tramo ${manualSegments.length + 1}`}
+                          aria-label="Nombre del tramo"
+                          className="min-w-40 flex-1 rounded-md border border-border bg-background px-2 py-1.5"
+                        />
+                        <button
+                          type="button"
+                          disabled={!draftValid}
+                          onClick={saveDraft}
+                          className="rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-40"
+                        >
+                          Guardar tramo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDraft(null)}
+                          className="rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <ClientOnly
                   fallback={<div className="h-72 w-full animate-pulse rounded-xl bg-elevated" />}
                 >
@@ -616,7 +748,7 @@ function Index() {
                     <SegmentMap
                       path={selectedPath}
                       color={selectedTrack.color}
-                      highlights={selectedHighlights}
+                      highlights={mapHighlights}
                       activePoint={activeMapPoint}
                       onPathSelect={selectNearestTrackPoint}
                       className="h-72 w-full overflow-hidden rounded-xl"
@@ -631,6 +763,11 @@ function Index() {
                       points={selectedTrack.points}
                       activeIndex={activePointIndex}
                       onActiveIndexChange={setActivePointIndex}
+                      range={
+                        draft && draft.start !== null && draft.end !== null
+                          ? [draft.start, draft.end]
+                          : null
+                      }
                     />
                   </Suspense>
                 </div>
@@ -727,6 +864,63 @@ function Index() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              <h4 className="mt-6 font-display text-sm uppercase tracking-[0.22em] text-muted-foreground">
+                Mis tramos ({selectedManual.length})
+              </h4>
+              {selectedManual.length === 0 ? (
+                <p className="mt-3 rounded-lg border border-border bg-elevated/50 p-4 text-sm text-muted-foreground">
+                  Aún no has definido tramos que pase esta salida. Pulsa "Definir tramo" junto al mapa.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {selectedManual.map(({ segment, efforts, mine }) => (
+                    <div key={segment.id} className="rounded-xl border border-border bg-elevated/40 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="font-display text-base">{segment.name}</p>
+                        <div className="flex items-center gap-3 font-mono text-xs text-muted-foreground">
+                          <span>{formatDistance(segment.distance)}</span>
+                          <span>{Math.round(mine.elevationGain)} m D+</span>
+                          <span>{mine.avgGrade.toFixed(1)}%</span>
+                          <button
+                            type="button"
+                            aria-label={`Eliminar ${segment.name}`}
+                            onClick={() =>
+                              setManualSegments((prev) => prev.filter((s) => s.id !== segment.id))
+                            }
+                            className="rounded p-1 hover:bg-elevated hover:text-foreground"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <dl className="mt-3 grid grid-cols-3 gap-2 font-mono text-xs">
+                        <Stat label="Tu tiempo" value={mine.hasTime ? formatDuration(mine.duration) : "—"} />
+                        <Stat
+                          label="Dif. mejor"
+                          value={mine.isBest ? "Mejor" : mine.hasTime ? formatDelta(mine.delta) : "—"}
+                        />
+                        <Stat label="Vel. media" value={mine.speed ? `${mine.speed.toFixed(1)} km/h` : "—"} />
+                      </dl>
+                      <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+                        {efforts
+                          .filter((e) => e.trackId !== selectedTrack.id)
+                          .map((e) => (
+                            <li key={e.trackId} className="flex items-center gap-2">
+                              <span className="size-2 rounded-full" style={{ backgroundColor: e.color }} />
+                              <span className="truncate">{e.trackName}</span>
+                              <span className="ml-auto font-mono">
+                                {e.hasTime ? formatDuration(e.duration) : "—"}
+                                {e.hasTime && !e.isBest ? ` (${formatDelta(e.delta)})` : ""}
+                              </span>
+                            </li>
+                          ))}
+                        {efforts.length === 1 && <li>Ninguna otra salida pasa por este tramo.</li>}
+                      </ul>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
