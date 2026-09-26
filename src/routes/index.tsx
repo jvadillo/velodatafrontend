@@ -1,72 +1,39 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { ClientOnly } from "@tanstack/react-router";
+import { api, uploadTrack } from "@/lib/api";
+import { ShareTrack } from "@/components/ShareTrack";
+import type { User } from "@/App";
+const ClientOnly = ({ children }: { children: React.ReactNode; fallback?: React.ReactNode }) => (
+  <>{children}</>
+);
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowDownUp,
-  Bike,
-  Gauge,
-  Mountain,
-  Timer,
-  Trash2,
-  Upload,
-  X,
-} from "lucide-react";
+import { ArrowDownUp, Bike, Gauge, Mountain, Timer, Trash2, Upload, X } from "lucide-react";
 
 import {
   formatDate,
   formatDelta,
   formatDistance,
   formatDuration,
-  parseGpx,
   haversine,
   type Track,
 } from "@/lib/gpx";
-import { findCommonSegments, type SegmentEffort } from "@/lib/segments";
-import { buildManualSegment, manualEfforts, type ManualSegment } from "@/lib/manualSegments";
+import { type CommonSegment, type SegmentEffort } from "@/lib/segments";
+import { type ManualSegment } from "@/lib/manualSegments";
 
 const SegmentMap = lazy(() => import("@/components/SegmentMap"));
 const ElevationProfile = lazy(() => import("@/components/ElevationProfile"));
 const SummaryChart = lazy(() => import("@/components/SummaryChart"));
 
-type SortKey = "date" | "distance" | "duration" | "elevation";
-
-const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
-  { key: "date", label: "Fecha" },
-  { key: "distance", label: "Distancia" },
-  { key: "duration", label: "Tiempo" },
-  { key: "elevation", label: "Desnivel" },
-];
-
-export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "Segmentos — Compara tus salidas en bici a partir de tus GPX" },
-      {
-        name: "description",
-        content:
-          "Sube varios archivos GPX de tus salidas en bicicleta de carretera y descubre los tramos que repites, con tiempos, velocidad media y desnivel comparados.",
-      },
-      { property: "og:title", content: "Segmentos — Compara tus salidas en bici" },
-      {
-        property: "og:description",
-        content:
-          "Detecta automáticamente los tramos comunes entre tus rutas GPX y compara tu rendimiento salida a salida.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-  }),
-  component: Index,
-});
-
-function Index() {
+export default function Dashboard({
+  user,
+  onLogout,
+}: {
+  user: User;
+  onLogout: () => Promise<void>;
+}) {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [showUploader, setShowUploader] = useState(true);
-  const [sortKey, setSortKey] = useState<SortKey>("date");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [openSegment, setOpenSegment] = useState<string | null>(null);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
@@ -78,49 +45,127 @@ function Index() {
   } | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleFiles = useCallback(async (fileList: FileList | null) => {
-    if (!fileList || fileList.length === 0) return;
-    setBusy(true);
-    const problems: string[] = [];
-    const parsed: Track[] = [];
-    const files = Array.from(fileList);
+  const [loading, setLoading] = useState(true);
+  const [libraryError, setLibraryError] = useState(false);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    Promise.all([api<Track[]>("/tracks"), api<ManualSegment[]>("/segments")])
+      .then(([saved, segments]) => {
+        if (!active) return;
+        setTracks(saved);
+        setManualSegments(segments);
+        setShowUploader(saved.length === 0);
+        setLibraryError(false);
+      })
+      .catch((e: Error) => {
+        if (active) {
+          setErrors([e.message]);
+          setLibraryError(true);
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [revision]);
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]!;
-      try {
-        const text = await file.text();
-        parsed.push(parseGpx(text, file.name, i));
-      } catch (error) {
-        problems.push(`${file.name}: ${(error as Error).message}`);
+  const handleFiles = useCallback(
+    async (fileList: FileList | null) => {
+      if (!fileList?.length || busy || loading || libraryError) return;
+      setBusy(true);
+      const problems: string[] = [];
+      let imported = 0;
+      for (const file of Array.from(fileList)) {
+        try {
+          const track = await uploadTrack(file);
+          setTracks((prev) =>
+            [...prev, track].map((t, i) => ({
+              ...t,
+              color: TRACK_PALETTE[i % TRACK_PALETTE.length]!,
+            })),
+          );
+          imported++;
+        } catch (e) {
+          problems.push(`${file.name}: ${(e as Error).message}`);
+        }
       }
-    }
+      setErrors(problems);
+      if (imported) setShowUploader(false);
+      setBusy(false);
+    },
+    [busy, loading, libraryError],
+  );
 
-    setTracks((prev) => {
-      const combined = [...prev, ...parsed];
-      return combined.map((track, i) => ({
-        ...track,
-        color: TRACK_PALETTE[i % TRACK_PALETTE.length]!,
-      }));
-    });
-    setErrors(problems);
-    if (parsed.length > 0) setShowUploader(false);
-    setBusy(false);
-  }, []);
-
-  const segments = useMemo(() => {
-    if (tracks.length < 2) return [];
+  const removeTrack = async (id: string) => {
+    if (
+      !window.confirm(
+        "¿Eliminar esta salida y sus tramos guardados? También se revocará su enlace compartido.",
+      )
+    )
+      return;
     try {
-      return findCommonSegments(tracks);
-    } catch {
-      return [];
+      await api(`/tracks/${id}`, { method: "DELETE" });
+      setTracks((prev) => prev.filter((t) => t.id !== id));
+      setManualSegments((prev) => prev.filter((s) => s.trackId !== id));
+      setSelectedTrackId(null);
+    } catch (e) {
+      setErrors([(e as Error).message]);
     }
-  }, [tracks]);
+  };
+  const removeSegment = async (id: string) => {
+    try {
+      await api(`/segments/${id}`, { method: "DELETE" });
+      setManualSegments((prev) => prev.filter((s) => s.id !== id));
+    } catch (e) {
+      setErrors([(e as Error).message]);
+    }
+  };
+
+  const [segments, setSegments] = useState<CommonSegment[]>([]);
+  const [manualResults, setManualResults] = useState<Record<string, SegmentEffort[]>>({});
+  const [analyzing, setAnalyzing] = useState(false);
+  useEffect(() => {
+    setSegments([]);
+    setManualResults({});
+    if (!tracks.length) {
+      setAnalyzing(false);
+      return;
+    }
+    const worker = new Worker(new URL("../lib/analysis.worker.ts", import.meta.url), {
+      type: "module",
+    });
+    setAnalyzing(true);
+    worker.onmessage = (
+      event: MessageEvent<{
+        segments?: CommonSegment[];
+        manual?: Record<string, SegmentEffort[]>;
+        error?: string;
+      }>,
+    ) => {
+      setAnalyzing(false);
+      if (event.data.error) setErrors([event.data.error]);
+      else {
+        setSegments(event.data.segments ?? []);
+        setManualResults(event.data.manual ?? {});
+      }
+      worker.terminate();
+    };
+    worker.onerror = () => {
+      setAnalyzing(false);
+      setErrors(["No se pudo ejecutar la comparación. Recarga la página."]);
+      worker.terminate();
+    };
+    worker.postMessage({ tracks, manual: manualSegments });
+    return () => worker.terminate();
+  }, [tracks, manualSegments]);
 
   const referenceTrack = useMemo(
     () =>
-      tracks.length
-        ? tracks.reduce((a, b) => (b.points.length > a.points.length ? b : a))
-        : null,
+      tracks.length ? tracks.reduce((a, b) => (b.points.length > a.points.length ? b : a)) : null,
     [tracks],
   );
 
@@ -180,7 +225,10 @@ function Index() {
     const totalDistance = tracks.reduce((sum, t) => sum + t.distance, 0);
     const totalDuration = tracks.reduce((sum, t) => sum + t.duration, 0);
     const totalElevation = tracks.reduce((sum, t) => sum + t.elevationGain, 0);
-    const avgSpeed = totalDuration > 0 ? (totalDistance / totalDuration) * 3.6 : null;
+    const timedDistance = tracks
+      .filter((t) => t.duration > 0)
+      .reduce((sum, t) => sum + t.distance, 0);
+    const avgSpeed = totalDuration > 0 ? (timedDistance / totalDuration) * 3.6 : null;
     const maxSpeed = tracks.reduce((max, t) => Math.max(max, trackMaxSpeed(t)), 0);
     const dates = tracks.map((t) => t.date).filter((d): d is number => d !== null);
     return {
@@ -234,11 +282,11 @@ function Index() {
   const selectedManual = useMemo(() => {
     if (!selectedTrack) return [];
     return manualSegments.flatMap((segment) => {
-      const efforts = manualEfforts(segment, tracks);
+      const efforts = manualResults[segment.id] ?? [];
       const mine = efforts.find((e) => e.trackId === selectedTrack.id);
       return mine ? [{ segment, efforts, mine }] : [];
     });
-  }, [manualSegments, tracks, selectedTrack]);
+  }, [manualSegments, manualResults, selectedTrack]);
 
   const draftValid =
     !!draft &&
@@ -249,14 +297,26 @@ function Index() {
       (selectedTrack.points[draft.end]?.d ?? 0) - (selectedTrack.points[draft.start]?.d ?? 0),
     ) >= 100;
 
-  const saveDraft = () => {
-    if (!draftValid || !draft || !selectedTrack) return;
-    const name = draft.name.trim() || `Mi tramo ${manualSegments.length + 1}`;
-    setManualSegments((prev) => [
-      ...prev,
-      buildManualSegment(selectedTrack, draft.start!, draft.end!, name),
-    ]);
-    setDraft(null);
+  const saveDraft = async () => {
+    if (!draftValid || !draft || !selectedTrack || busy) return;
+    setBusy(true);
+    try {
+      const saved = await api<ManualSegment>("/segments", {
+        method: "POST",
+        body: JSON.stringify({
+          track_id: selectedTrack.id,
+          start: draft.start,
+          end: draft.end,
+          name: draft.name.trim() || `Mi tramo ${manualSegments.length + 1}`,
+        }),
+      });
+      setManualSegments((prev) => [...prev, saved]);
+      setDraft(null);
+    } catch (e) {
+      setErrors([(e as Error).message]);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const mapHighlights = useMemo(() => {
@@ -281,25 +341,32 @@ function Index() {
     return list;
   }, [selectedHighlights, selectedManual, selectedTrack, draft]);
 
-
-
-
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border/70 bg-surface/60 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-5 py-5">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-5 py-5">
           <span className="flex size-10 items-center justify-center rounded-lg bg-primary/15 text-primary">
             <Bike className="size-5" />
           </span>
           <div>
             <h1 className="font-display text-xl uppercase tracking-[0.18em] text-foreground">
-              Tramos
+              VeloData
             </h1>
             <p className="text-xs text-muted-foreground">
               Comparador de rendimiento para rutas GPX de carretera
             </p>
           </div>
+          <div className="ml-auto flex flex-wrap items-center gap-3 text-xs">
+            <span className="max-w-44 truncate text-muted-foreground">{user.email}</span>
+            <button
+              onClick={() => void onLogout().catch((e: Error) => setErrors([e.message]))}
+              className="rounded border border-border px-3 py-2"
+            >
+              Cerrar sesión
+            </button>
+          </div>
           <button
+            disabled={loading || busy || libraryError}
             onClick={() => setShowUploader((v) => !v)}
             className="ml-auto inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
@@ -315,51 +382,61 @@ function Index() {
             Sube tus salidas y descubre en qué tramos has mejorado
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            Todo el análisis ocurre en tu navegador: tus archivos no salen de tu
-            ordenador. Añade dos o más GPX que compartan carretera y te mostramos cada
-            tramo repetido con tiempos, velocidad media y desnivel.
+            Tus salidas se guardan en tu cuenta y son privadas por defecto. Añade dos o más GPX que
+            compartan carretera para comparar tiempos, velocidad media y desnivel. Los tiempos
+            incluyen las paradas; las coincidencias GPS son aproximadas.
           </p>
         </section>
 
-        {(tracks.length === 0 || showUploader) && (
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragging(false);
-            void handleFiles(e.dataTransfer.files);
-          }}
-          onClick={() => inputRef.current?.click()}
-          className={`mt-8 cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${
-            dragging
-              ? "border-primary bg-primary/10"
-              : "border-border bg-surface/50 hover:border-primary/60 hover:bg-surface"
-          }`}
-        >
-          <Upload className="mx-auto size-7 text-primary" />
-          <p className="mt-3 font-medium">Arrastra aquí tus archivos GPX</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            o haz clic para seleccionarlos · varios a la vez
+        {loading && (
+          <p className="mt-6" role="status">
+            Cargando tu biblioteca…
           </p>
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".gpx,application/gpx+xml"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              void handleFiles(e.target.files);
-              e.target.value = "";
+        )}
+        {libraryError && (
+          <button className="mt-4 rounded border p-3" onClick={() => setRevision((v) => v + 1)}>
+            Reintentar carga
+          </button>
+        )}
+        {!loading && !libraryError && (tracks.length === 0 || showUploader) && (
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
             }}
-          />
-        </div>
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              void handleFiles(e.dataTransfer.files);
+            }}
+            onClick={() => inputRef.current?.click()}
+            className={`mt-8 cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${
+              dragging
+                ? "border-primary bg-primary/10"
+                : "border-border bg-surface/50 hover:border-primary/60 hover:bg-surface"
+            }`}
+          >
+            <Upload className="mx-auto size-7 text-primary" />
+            <p className="mt-3 font-medium">Arrastra aquí tus archivos GPX</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              o haz clic para seleccionarlos · hasta 10 MB y 30.000 puntos por archivo
+            </p>
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".gpx,application/gpx+xml"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                void handleFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </div>
         )}
 
-        {busy && (
+        {(busy || analyzing) && (
           <p className="mt-4 text-sm text-muted-foreground">Analizando recorridos…</p>
         )}
 
@@ -444,15 +521,13 @@ function Index() {
                         />
                         <h3 className="truncate text-sm font-medium">{track.name}</h3>
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {formatDate(track.date)}
-                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(track.date)}</p>
                     </div>
                     <button
                       aria-label="Quitar salida"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setTracks((prev) => prev.filter((t) => t.id !== track.id));
+                        void removeTrack(track.id);
                       }}
                       className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
                     >
@@ -464,6 +539,14 @@ function Index() {
                     <Stat label="Tiempo" value={formatDuration(track.duration)} />
                     <Stat label="Desnivel" value={`${Math.round(track.elevationGain)} m`} />
                   </dl>
+                  <ShareTrack
+                    track={track}
+                    onChange={(token) =>
+                      setTracks((prev) =>
+                        prev.map((t) => (t.id === track.id ? { ...t, shareToken: token } : t)),
+                      )
+                    }
+                  />
                 </article>
               ))}
             </div>
@@ -476,15 +559,13 @@ function Index() {
           </p>
         )}
 
-        {tracks.length >= 2 && (
+        {tracks.length >= 2 && !analyzing && (
           <section className="mt-12">
-            <SectionTitle>
-              Tramos comunes detectados ({segments.length})
-            </SectionTitle>
+            <SectionTitle>Tramos comunes detectados ({segments.length})</SectionTitle>
             {segments.length === 0 ? (
               <p className="mt-4 rounded-lg border border-border bg-surface p-4 text-sm text-muted-foreground">
-                No hemos encontrado tramos de al menos 500 m que se repitan en la misma
-                dirección entre estas salidas.
+                No hemos encontrado tramos de al menos 500 m que se repitan en la misma dirección
+                entre estas salidas.
               </p>
             ) : (
               <div className="mt-4 space-y-4">
@@ -547,10 +628,7 @@ function Index() {
                             </thead>
                             <tbody>
                               {segment.efforts.map((effort) => (
-                                <tr
-                                  key={effort.trackId}
-                                  className="border-t border-border/50"
-                                >
+                                <tr key={effort.trackId} className="border-t border-border/50">
                                   <td className="px-5 py-3">
                                     <span className="flex items-center gap-2">
                                       <span
@@ -573,9 +651,7 @@ function Index() {
                                   </td>
                                   <td
                                     className={`px-5 py-3 font-mono ${
-                                      effort.delta > 0
-                                        ? "text-destructive"
-                                        : "text-success"
+                                      effort.delta > 0 ? "text-destructive" : "text-success"
                                     }`}
                                   >
                                     {effort.hasTime ? formatDelta(effort.delta) : "—"}
@@ -660,10 +736,7 @@ function Index() {
               <dl className="grid grid-cols-2 gap-3 font-mono text-xs sm:grid-cols-4">
                 <Stat label="Dist." value={formatDistance(selectedTrack.distance)} />
                 <Stat label="Tiempo" value={formatDuration(selectedTrack.duration)} />
-                <Stat
-                  label="Desnivel"
-                  value={`${Math.round(selectedTrack.elevationGain)} m`}
-                />
+                <Stat label="Desnivel" value={`${Math.round(selectedTrack.elevationGain)} m`} />
                 <Stat
                   label="Vel. media"
                   value={
@@ -731,7 +804,7 @@ function Index() {
                         />
                         <button
                           type="button"
-                          disabled={!draftValid}
+                          disabled={!draftValid || busy}
                           onClick={saveDraft}
                           className="rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-40"
                         >
@@ -752,9 +825,7 @@ function Index() {
                   fallback={<div className="h-72 w-full animate-pulse rounded-xl bg-elevated" />}
                 >
                   <Suspense
-                    fallback={
-                      <div className="h-72 w-full animate-pulse rounded-xl bg-elevated" />
-                    }
+                    fallback={<div className="h-72 w-full animate-pulse rounded-xl bg-elevated" />}
                   >
                     <SegmentMap
                       path={selectedPath}
@@ -785,15 +856,24 @@ function Index() {
                 {selectedSegments.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
-                      <span className="h-1 w-4 rounded-full" style={{ backgroundColor: RANK_BEST }} />
+                      <span
+                        className="h-1 w-4 rounded-full"
+                        style={{ backgroundColor: RANK_BEST }}
+                      />
                       Mejor tiempo
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <span className="h-1 w-4 rounded-full" style={{ backgroundColor: RANK_MIDDLE }} />
+                      <span
+                        className="h-1 w-4 rounded-full"
+                        style={{ backgroundColor: RANK_MIDDLE }}
+                      />
                       Intermedio
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <span className="h-1 w-4 rounded-full" style={{ backgroundColor: RANK_WORST }} />
+                      <span
+                        className="h-1 w-4 rounded-full"
+                        style={{ backgroundColor: RANK_WORST }}
+                      />
                       Peor tiempo
                     </span>
                   </div>
@@ -811,9 +891,7 @@ function Index() {
               ) : (
                 <div className="mt-3 space-y-3">
                   {selectedSegments.map((segment) => {
-                    const mine = segment.efforts.find(
-                      (e) => e.trackId === selectedTrack.id,
-                    )!;
+                    const mine = segment.efforts.find((e) => e.trackId === selectedTrack.id)!;
                     return (
                       <div
                         key={segment.id}
@@ -844,11 +922,7 @@ function Index() {
                           <Stat
                             label="Dif. mejor"
                             value={
-                              mine.isBest
-                                ? "Mejor"
-                                : mine.hasTime
-                                  ? formatDelta(mine.delta)
-                                  : "—"
+                              mine.isBest ? "Mejor" : mine.hasTime ? formatDelta(mine.delta) : "—"
                             }
                           />
                           <Stat
@@ -883,12 +957,16 @@ function Index() {
               </h4>
               {selectedManual.length === 0 ? (
                 <p className="mt-3 rounded-lg border border-border bg-elevated/50 p-4 text-sm text-muted-foreground">
-                  Aún no has definido tramos que pase esta salida. Pulsa "Definir tramo" junto al mapa.
+                  Aún no has definido tramos que pase esta salida. Pulsa "Definir tramo" junto al
+                  mapa.
                 </p>
               ) : (
                 <div className="mt-3 space-y-3">
                   {selectedManual.map(({ segment, efforts, mine }) => (
-                    <div key={segment.id} className="rounded-xl border border-border bg-elevated/40 p-4">
+                    <div
+                      key={segment.id}
+                      className="rounded-xl border border-border bg-elevated/40 p-4"
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <p className="font-display text-base">{segment.name}</p>
                         <div className="flex items-center gap-3 font-mono text-xs text-muted-foreground">
@@ -898,9 +976,7 @@ function Index() {
                           <button
                             type="button"
                             aria-label={`Eliminar ${segment.name}`}
-                            onClick={() =>
-                              setManualSegments((prev) => prev.filter((s) => s.id !== segment.id))
-                            }
+                            onClick={() => void removeSegment(segment.id)}
                             className="rounded p-1 hover:bg-elevated hover:text-foreground"
                           >
                             <Trash2 className="size-3.5" />
@@ -908,19 +984,30 @@ function Index() {
                         </div>
                       </div>
                       <dl className="mt-3 grid grid-cols-3 gap-2 font-mono text-xs">
-                        <Stat label="Tu tiempo" value={mine.hasTime ? formatDuration(mine.duration) : "—"} />
+                        <Stat
+                          label="Tu tiempo"
+                          value={mine.hasTime ? formatDuration(mine.duration) : "—"}
+                        />
                         <Stat
                           label="Dif. mejor"
-                          value={mine.isBest ? "Mejor" : mine.hasTime ? formatDelta(mine.delta) : "—"}
+                          value={
+                            mine.isBest ? "Mejor" : mine.hasTime ? formatDelta(mine.delta) : "—"
+                          }
                         />
-                        <Stat label="Vel. media" value={mine.speed ? `${mine.speed.toFixed(1)} km/h` : "—"} />
+                        <Stat
+                          label="Vel. media"
+                          value={mine.speed ? `${mine.speed.toFixed(1)} km/h` : "—"}
+                        />
                       </dl>
                       <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
                         {efforts
                           .filter((e) => e.trackId !== selectedTrack.id)
                           .map((e) => (
                             <li key={e.trackId} className="flex items-center gap-2">
-                              <span className="size-2 rounded-full" style={{ backgroundColor: e.color }} />
+                              <span
+                                className="size-2 rounded-full"
+                                style={{ backgroundColor: e.color }}
+                              />
                               <span className="truncate">{e.trackName}</span>
                               <span className="ml-auto font-mono">
                                 {e.hasTime ? formatDuration(e.duration) : "—"}
@@ -990,9 +1077,7 @@ function trackMaxSpeed(track: Track): number {
 function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </dt>
+      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</dt>
       <dd className="mt-1 text-xl font-medium text-foreground">{value}</dd>
     </div>
   );
@@ -1009,9 +1094,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </dt>
+      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 text-foreground">{value}</dd>
     </div>
   );

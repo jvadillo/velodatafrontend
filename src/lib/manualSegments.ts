@@ -2,6 +2,7 @@ import { elevationGain, haversine, type Track } from "./gpx";
 import type { SegmentEffort } from "./segments";
 
 export interface ManualSegment {
+  trackId?: string;
   id: string;
   name: string;
   start: [number, number];

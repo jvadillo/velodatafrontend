@@ -9,6 +9,7 @@ export interface TrackPoint {
 }
 
 export interface Track {
+  shareToken?: string | null;
   id: string;
   name: string;
   fileName: string;
