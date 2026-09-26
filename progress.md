@@ -2,7 +2,7 @@
 
 2026-09-26: primera versión funcional desplegada en **https://velodata.jonvadillo.com**.
 
-Repositorio destino confirmado: **jvadillo/velodatafrontend** (creado por el usuario; nombre corregido respecto al pedido inicial). Carpeta local `/home/deploy/projects/velodatafronted`. Original `jvadillo/velodata` conservado como upstream, base 42dd71e. Publicación final en curso.
+Repositorio destino confirmado: **jvadillo/velodatafrontend** (creado por el usuario; nombre corregido respecto al pedido inicial). Carpeta local `/home/deploy/projects/velodatafronted`. Original `jvadillo/velodata` conservado como upstream, base 42dd71e. Publicado en GitHub, commit de implementación `24076df`; workflow de checks añadido (resultado remoto no consultado).
 
 | Funcionalidad | Estado |
 |---|---|
