@@ -22,10 +22,7 @@ function pointMetrics(points: TrackPoint[], index: number) {
   let to = index;
 
   while (from > 0 && point.d - (points[from]?.d ?? point.d) < windowDistance) from -= 1;
-  while (
-    to < points.length - 1 &&
-    (points[to]?.d ?? point.d) - point.d < windowDistance
-  ) {
+  while (to < points.length - 1 && (points[to]?.d ?? point.d) - point.d < windowDistance) {
     to += 1;
   }
 
@@ -78,7 +75,7 @@ export default function ElevationProfile({
 
   if (!profile) return null;
 
-  const activePoint = activeIndex === null ? null : points[activeIndex] ?? null;
+  const activePoint = activeIndex === null ? null : (points[activeIndex] ?? null);
   const activeMetrics = activeIndex === null ? null : pointMetrics(points, activeIndex);
   const distanceTicks = Array.from({ length: 5 }, (_, index) => index / 4);
   const elevationTicks = Array.from({ length: 3 }, (_, index) => index / 2);
@@ -88,10 +85,7 @@ export default function ElevationProfile({
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
     const viewX = ((clientX - rect.left) / rect.width) * WIDTH;
-    const ratio = Math.max(
-      0,
-      Math.min(1, (viewX - PADDING.left) / profile.plotWidth),
-    );
+    const ratio = Math.max(0, Math.min(1, (viewX - PADDING.left) / profile.plotWidth));
     const targetDistance = ratio * profile.totalDistance;
     let low = 0;
     let high = points.length - 1;
@@ -116,10 +110,7 @@ export default function ElevationProfile({
         <p className="font-display text-xs uppercase tracking-[0.18em] text-muted-foreground">
           Perfil del recorrido
         </p>
-        <p
-          className="min-h-4 text-right font-mono text-[11px] text-foreground"
-          aria-live="polite"
-        >
+        <p className="min-h-4 text-right font-mono text-[11px] text-foreground" aria-live="polite">
           {activePoint
             ? `${(activePoint.d / 1000).toFixed(2)} km · ${Math.round(activePoint.ele)} m · ${activeMetrics?.speed === null || activeMetrics?.speed === undefined ? "— km/h" : `${activeMetrics.speed.toFixed(1)} km/h`} · ${activeMetrics?.grade === null || activeMetrics?.grade === undefined ? "— %" : `${activeMetrics.grade >= 0 ? "+" : ""}${activeMetrics.grade.toFixed(1)} %`}`
             : "Recorre el perfil o pulsa la ruta"}
@@ -184,6 +175,43 @@ export default function ElevationProfile({
           strokeWidth="2.5"
           strokeLinejoin="round"
         />
+
+        {range && (
+          <>
+            <polyline
+              points={points
+                .slice(range[0], range[1] + 1)
+                .filter(
+                  (_, i) =>
+                    i % Math.max(1, Math.ceil((range[1] - range[0]) / 700)) === 0 ||
+                    i === range[1] - range[0],
+                )
+                .map((p) => `${profile.x(p.d)},${profile.y(p.ele)}`)
+                .join(" ")}
+              fill="none"
+              stroke="#38bdf8"
+              strokeWidth="4"
+            />
+            {range.map((index, i) => (
+              <g key={i}>
+                <line
+                  x1={profile.x(points[index]!.d)}
+                  x2={profile.x(points[index]!.d)}
+                  y1={PADDING.top}
+                  y2={HEIGHT - PADDING.bottom}
+                  stroke="#38bdf8"
+                  strokeDasharray="4 3"
+                />
+                <circle
+                  cx={profile.x(points[index]!.d)}
+                  cy={profile.y(points[index]!.ele)}
+                  r="5"
+                  fill="#38bdf8"
+                />
+              </g>
+            ))}
+          </>
+        )}
 
         {distanceTicks.map((ratio) => (
           <text

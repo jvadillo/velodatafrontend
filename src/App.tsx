@@ -167,6 +167,7 @@ function Auth({ onLogin, hash }: { onLogin: (user: User) => void; hash: string }
         setMode("login");
         setPassword("");
       } else if (mode === "login") {
+        location.hash = "/";
         onLogin(
           await api<User>("/auth/login", {
             method: "POST",

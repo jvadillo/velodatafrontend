@@ -38,3 +38,36 @@ test("untimed tracks do not win; manual segments compare matching rides", () => 
   assert.equal(efforts[1]!.hasTime, false);
   assert.equal(efforts[1]!.isBest, false);
 });
+
+test("track sorting handles all metrics and puts missing dates/times last in either direction", async () => {
+  const { sortTracks } = await import("./trackSort");
+  const a = { ...track("a"), date: 300, distance: 3000, duration: 300, elevationGain: 50 };
+  const b = { ...track("b"), date: 100, distance: 5000, duration: 1000, elevationGain: 200 };
+  const c = { ...track("c"), date: null, distance: 1000, duration: 0, elevationGain: 100 };
+  const library = [a, b, c];
+  assert.deepEqual(
+    sortTracks(library, "date", false).map((t) => t.id),
+    ["a", "b", "c"],
+  );
+  assert.deepEqual(
+    sortTracks(library, "date", true).map((t) => t.id),
+    ["b", "a", "c"],
+  );
+  assert.deepEqual(
+    sortTracks(library, "distance", false).map((t) => t.id),
+    ["b", "a", "c"],
+  );
+  assert.deepEqual(
+    sortTracks(library, "speed", false).map((t) => t.id),
+    ["a", "b", "c"],
+  );
+  assert.deepEqual(
+    sortTracks(library, "speed", true).map((t) => t.id),
+    ["b", "a", "c"],
+  );
+  assert.deepEqual(
+    sortTracks(library, "elevation", false).map((t) => t.id),
+    ["b", "c", "a"],
+  );
+  assert.deepEqual(library, [a, b, c]);
+});

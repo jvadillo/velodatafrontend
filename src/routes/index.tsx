@@ -1,11 +1,17 @@
 import { api, uploadTrack } from "@/lib/api";
 import { ShareTrack } from "@/components/ShareTrack";
+import { Navigation } from "@/components/Navigation";
+import { usePage } from "@/hooks/use-page";
+import { Profile } from "@/components/Profile";
+import { TrackCard } from "@/components/TrackCard";
+import { SegmentRange } from "@/components/SegmentRange";
+import { sortTracks, type TrackSort } from "@/lib/trackSort";
 import type { User } from "@/App";
 const ClientOnly = ({ children }: { children: React.ReactNode; fallback?: React.ReactNode }) => (
   <>{children}</>
 );
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownUp, Bike, Gauge, Mountain, Timer, Trash2, Upload, X } from "lucide-react";
+import { ArrowDownUp, Gauge, Mountain, Timer, Trash2, Upload } from "lucide-react";
 
 import {
   formatDate,
@@ -33,9 +39,15 @@ export default function Dashboard({
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [showUploader, setShowUploader] = useState(true);
+  const page = usePage();
+  const [sort, setSort] = useState<TrackSort>("date");
+  const [ascending, setAscending] = useState(false);
   const [openSegment, setOpenSegment] = useState<string | null>(null);
-  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+  const selectedTrackId = page.startsWith("/tracks/") ? page.slice(8) : null;
+  const sortedTracks = useMemo(
+    () => sortTracks(tracks, sort, ascending),
+    [tracks, sort, ascending],
+  );
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
   const [manualSegments, setManualSegments] = useState<ManualSegment[]>([]);
   const [draft, setDraft] = useState<{
@@ -56,7 +68,7 @@ export default function Dashboard({
         if (!active) return;
         setTracks(saved);
         setManualSegments(segments);
-        setShowUploader(saved.length === 0);
+
         setLibraryError(false);
       })
       .catch((e: Error) => {
@@ -94,7 +106,7 @@ export default function Dashboard({
         }
       }
       setErrors(problems);
-      if (imported) setShowUploader(false);
+      if (imported && !problems.length) location.hash = "/tracks";
       setBusy(false);
     },
     [busy, loading, libraryError],
@@ -111,7 +123,7 @@ export default function Dashboard({
       await api(`/tracks/${id}`, { method: "DELETE" });
       setTracks((prev) => prev.filter((t) => t.id !== id));
       setManualSegments((prev) => prev.filter((s) => s.trackId !== id));
-      setSelectedTrackId(null);
+      if (selectedTrackId === id) location.hash = "/tracks";
     } catch (e) {
       setErrors([(e as Error).message]);
     }
@@ -336,57 +348,71 @@ export default function Dashboard({
         const p = selectedTrack.points[k]!;
         path.push([p.lat, p.lon]);
       }
-      list.push({ path, color: "#38bdf8" });
+      const last = selectedTrack.points[e]!;
+      path.push([last.lat, last.lon]);
+      return [{ path, color: "#38bdf8" }];
     }
     return list;
   }, [selectedHighlights, selectedManual, selectedTrack, draft]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border/70 bg-surface/60 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-5 py-5">
-          <span className="flex size-10 items-center justify-center rounded-lg bg-primary/15 text-primary">
-            <Bike className="size-5" />
-          </span>
-          <div>
-            <h1 className="font-display text-xl uppercase tracking-[0.18em] text-foreground">
-              VeloData
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              Comparador de rendimiento para rutas GPX de carretera
-            </p>
-          </div>
-          <div className="ml-auto flex flex-wrap items-center gap-3 text-xs">
-            <span className="max-w-44 truncate text-muted-foreground">{user.email}</span>
-            <button
-              onClick={() => void onLogout().catch((e: Error) => setErrors([e.message]))}
-              className="rounded border border-border px-3 py-2"
-            >
-              Cerrar sesión
-            </button>
-          </div>
-          <button
-            disabled={loading || busy || libraryError}
-            onClick={() => setShowUploader((v) => !v)}
-            className="ml-auto inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            <Upload className="size-4" />
-            Añadir tracks
-          </button>
-        </div>
-      </header>
+      <Navigation
+        page={page}
+        onLogout={() => onLogout().catch((e: Error) => setErrors([e.message]))}
+      />
 
       <main className="mx-auto max-w-6xl px-5 pb-24 pt-10">
-        <section className="max-w-2xl">
-          <h2 className="font-display text-3xl leading-tight sm:text-4xl">
-            Sube tus salidas y descubre en qué tramos has mejorado
-          </h2>
-          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            Tus salidas se guardan en tu cuenta y son privadas por defecto. Añade dos o más GPX que
-            compartan carretera para comparar tiempos, velocidad media y desnivel. Los tiempos
-            incluyen las paradas; las coincidencias GPS son aproximadas.
+        {!selectedTrackId && (
+          <div>
+            <p className="mb-2 text-xs uppercase tracking-[0.2em] text-primary">
+              Tu espacio ciclista
+            </p>
+            <h1 className="font-display text-3xl sm:text-4xl">
+              {page === "/tracks"
+                ? "Mis rutas"
+                : page === "/segments"
+                  ? "Mis segmentos"
+                  : page === "/profile"
+                    ? "Mi Perfil"
+                    : page === "/upload"
+                      ? "Añadir tracks"
+                      : "Resumen de tus salidas"}
+            </h1>
+            <p className="mt-3 text-sm text-muted-foreground">
+              {page === "/tracks"
+                ? "Todos tus recorridos, de un vistazo."
+                : page === "/segments"
+                  ? "Compara tus tiempos y distingue los tramos que has definido de las coincidencias automáticas."
+                  : page === "/upload"
+                    ? "Importa tus archivos GPX. Tus rutas se guardan de forma privada."
+                    : page === "/profile"
+                      ? "Gestiona la contraseña de tu cuenta."
+                      : "Tu distancia, desnivel y evolución en un mismo panel."}
+            </p>
+          </div>
+        )}
+        {page === "/profile" && <Profile user={user} />}
+        {!loading && !libraryError && selectedTrackId && !selectedTrack && (
+          <p className="mt-6" role="alert">
+            Esta salida no existe o ya no está disponible.{" "}
+            <a className="text-primary underline" href="#/tracks">
+              Volver a Mis rutas
+            </a>
           </p>
-        </section>
+        )}
+        {!loading &&
+          !libraryError &&
+          tracks.length === 0 &&
+          (page === "/" || page === "/tracks") && (
+            <p className="mt-8 rounded-xl border border-border bg-surface p-6">
+              Aún no tienes salidas.{" "}
+              <a className="text-primary underline" href="#/upload">
+                Añade tu primer track
+              </a>{" "}
+              para empezar.
+            </p>
+          )}
 
         {loading && (
           <p className="mt-6" role="status">
@@ -398,7 +424,7 @@ export default function Dashboard({
             Reintentar carga
           </button>
         )}
-        {!loading && !libraryError && (tracks.length === 0 || showUploader) && (
+        {!loading && !libraryError && page === "/upload" && (
           <div
             onDragOver={(e) => {
               e.preventDefault();
@@ -409,6 +435,15 @@ export default function Dashboard({
               e.preventDefault();
               setDragging(false);
               void handleFiles(e.dataTransfer.files);
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Seleccionar archivos GPX"
+            onKeyDown={(e) => {
+              if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                e.preventDefault();
+                inputRef.current?.click();
+              }
             }}
             onClick={() => inputRef.current?.click()}
             className={`mt-8 cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${
@@ -441,14 +476,17 @@ export default function Dashboard({
         )}
 
         {errors.length > 0 && (
-          <ul className="mt-4 space-y-1 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive-foreground">
+          <ul
+            role="alert"
+            className="mt-4 space-y-1 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive-foreground"
+          >
             {errors.map((error) => (
               <li key={error}>{error}</li>
             ))}
           </ul>
         )}
 
-        {tracks.length > 0 && (
+        {page === "/" && !loading && !libraryError && (
           <section className="mt-10 rounded-2xl border border-border bg-surface/60 p-5">
             <SectionTitle>Resumen</SectionTitle>
             <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 font-mono sm:grid-cols-4">
@@ -494,74 +532,122 @@ export default function Dashboard({
           </section>
         )}
 
-        {tracks.length > 0 && (
-          <section className="mt-10">
-            <SectionTitle>Salidas cargadas ({tracks.length})</SectionTitle>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {tracks.map((track) => (
-                <article
-                  key={track.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSelectedTrackId(track.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setSelectedTrackId(track.id);
-                    }
-                  }}
-                  className="cursor-pointer rounded-xl border border-border bg-surface p-4 transition-colors hover:border-primary/60 hover:bg-elevated"
+        {page === "/tracks" && tracks.length > 0 && (
+          <section className="mt-8">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <SectionTitle>{tracks.length} salidas</SectionTitle>
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                <label htmlFor="track-sort">Ordenar por</label>
+                <select
+                  id="track-sort"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as TrackSort)}
+                  className="rounded-lg border border-border bg-surface p-2"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="size-2.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: track.color }}
-                        />
-                        <h3 className="truncate text-sm font-medium">{track.name}</h3>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(track.date)}</p>
-                    </div>
+                  <option value="date">Fecha</option>
+                  <option value="distance">Distancia recorrida</option>
+                  <option value="speed">Velocidad media</option>
+                  <option value="elevation">Desnivel positivo</option>
+                </select>
+                <button
+                  className="rounded-lg border border-border p-2"
+                  onClick={() => setAscending((v) => !v)}
+                  aria-label="Cambiar sentido de ordenación"
+                >
+                  {ascending ? "Ascendente ↑" : "Descendente ↓"}
+                </button>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {sortedTracks.map((track) => (
+                <TrackCard
+                  key={track.id}
+                  track={track}
+                  onRemove={() => void removeTrack(track.id)}
+                  onShare={(token) =>
+                    setTracks((prev) =>
+                      prev.map((t) => (t.id === track.id ? { ...t, shareToken: token } : t)),
+                    )
+                  }
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {page === "/segments" && !loading && !libraryError && (
+          <section className="mt-8">
+            <SectionTitle>Definidos por ti ({manualSegments.length})</SectionTitle>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Crea un segmento desde el detalle de cualquiera de tus rutas.
+            </p>
+            {manualSegments.length === 0 && (
+              <p className="mt-4 rounded-xl border border-border p-5">
+                Todavía no has definido segmentos.{" "}
+                <a href="#/tracks" className="text-primary underline">
+                  Ver mis rutas
+                </a>
+              </p>
+            )}
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              {manualSegments.map((segment) => (
+                <article
+                  key={segment.id}
+                  className="rounded-xl border border-border bg-surface p-5"
+                >
+                  <span className="rounded bg-sky-400/10 px-2 py-1 text-xs text-sky-400">
+                    Definido por ti
+                  </span>
+                  <h2 className="mt-3 font-display text-xl">{segment.name}</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {formatDistance(segment.distance)}
+                  </p>
+                  <ul className="mt-4 space-y-2 text-sm">
+                    {(manualResults[segment.id] ?? []).map((effort) => (
+                      <li key={effort.trackId} className="flex justify-between gap-3">
+                        <a
+                          href={`#/tracks/${effort.trackId}`}
+                          className="truncate text-primary hover:underline"
+                        >
+                          {effort.trackName}
+                        </a>
+                        <span className="shrink-0 font-mono">
+                          {effort.hasTime ? formatDuration(effort.duration) : "Sin tiempos"}
+                          {effort.isBest ? " · Mejor" : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-5 flex items-center justify-between gap-3">
+                    <a
+                      href={`#/tracks/${segment.trackId}`}
+                      className="text-sm text-primary hover:underline"
+                    >
+                      Ver ruta de origen →
+                    </a>
                     <button
-                      aria-label="Quitar salida"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void removeTrack(track.id);
-                      }}
-                      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
+                      aria-label={`Eliminar ${segment.name}`}
+                      onClick={() => void removeSegment(segment.id)}
+                      className="rounded-lg p-2 hover:bg-elevated"
                     >
                       <Trash2 className="size-4" />
                     </button>
                   </div>
-                  <dl className="mt-4 grid grid-cols-3 gap-2 font-mono text-xs">
-                    <Stat label="Dist." value={formatDistance(track.distance)} />
-                    <Stat label="Tiempo" value={formatDuration(track.duration)} />
-                    <Stat label="Desnivel" value={`${Math.round(track.elevationGain)} m`} />
-                  </dl>
-                  <ShareTrack
-                    track={track}
-                    onChange={(token) =>
-                      setTracks((prev) =>
-                        prev.map((t) => (t.id === track.id ? { ...t, shareToken: token } : t)),
-                      )
-                    }
-                  />
                 </article>
               ))}
             </div>
           </section>
         )}
 
-        {tracks.length === 1 && (
+        {page === "/segments" && tracks.length < 2 && (
           <p className="mt-8 rounded-lg border border-border bg-surface p-4 text-sm text-muted-foreground">
             Añade al menos una salida más para poder comparar tramos.
           </p>
         )}
 
-        {tracks.length >= 2 && !analyzing && (
+        {page === "/segments" && tracks.length >= 2 && !analyzing && (
           <section className="mt-12">
-            <SectionTitle>Tramos comunes detectados ({segments.length})</SectionTitle>
+            <SectionTitle>Generados automáticamente ({segments.length})</SectionTitle>
             {segments.length === 0 ? (
               <p className="mt-4 rounded-lg border border-border bg-surface p-4 text-sm text-muted-foreground">
                 No hemos encontrado tramos de al menos 500 m que se repitan en la misma dirección
@@ -581,6 +667,7 @@ export default function Dashboard({
                         className="flex w-full flex-wrap items-center justify-between gap-4 p-5 text-left transition-colors hover:bg-elevated"
                       >
                         <div>
+                          <p className="mb-2 text-xs text-primary">Automático</p>
                           <p className="font-display text-lg">Tramo {segment.index}</p>
                           <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-muted-foreground">
                             <span className="inline-flex items-center gap-1">
@@ -635,7 +722,12 @@ export default function Dashboard({
                                         className="size-2.5 rounded-full"
                                         style={{ backgroundColor: effort.color }}
                                       />
-                                      <span className="truncate">{effort.trackName}</span>
+                                      <a
+                                        href={`#/tracks/${effort.trackId}`}
+                                        className="truncate hover:underline"
+                                      >
+                                        {effort.trackName}
+                                      </a>
                                       {effort.isBest && (
                                         <span className="rounded bg-primary/15 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-primary">
                                           Mejor
@@ -683,7 +775,7 @@ export default function Dashboard({
                                 <SegmentMap
                                   path={segment.path}
                                   context={contextPath}
-                                  className="h-72 w-full overflow-hidden rounded-xl"
+                                  className="h-80 w-full overflow-hidden rounded-xl sm:h-[420px]"
                                 />
                               </Suspense>
                             </ClientOnly>
@@ -697,222 +789,276 @@ export default function Dashboard({
             )}
           </section>
         )}
-      </main>
 
-      {selectedTrack && (
-        <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/80 p-4 backdrop-blur-sm sm:p-8"
-          onClick={() => setSelectedTrackId(null)}
-        >
-          <div
-            role="dialog"
-            aria-label={`Detalle de ${selectedTrack.name}`}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-3xl rounded-2xl border border-border bg-surface shadow-2xl"
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-border/70 p-5">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="size-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: selectedTrack.color }}
-                  />
-                  <h3 className="truncate font-display text-lg">{selectedTrack.name}</h3>
+        {selectedTrack && (
+          <section>
+            <a
+              href="#/tracks"
+              className="mb-6 inline-flex items-center gap-2 text-sm text-primary hover:underline"
+            >
+              ← Volver a Mis rutas
+            </a>
+            <div className="rounded-2xl border border-border bg-surface">
+              <div className="flex items-start justify-between gap-4 border-b border-border/70 p-5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="size-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: selectedTrack.color }}
+                    />
+                    <h1 className="break-words font-display text-2xl sm:text-3xl">
+                      {selectedTrack.name}
+                    </h1>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {formatDate(selectedTrack.date)} · {selectedTrack.fileName}
+                  </p>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {formatDate(selectedTrack.date)} · {selectedTrack.fileName}
-                </p>
               </div>
-              <button
-                aria-label="Cerrar detalle"
-                onClick={() => setSelectedTrackId(null)}
-                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-elevated hover:text-foreground"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
 
-            <div className="p-5">
-              <dl className="grid grid-cols-2 gap-3 font-mono text-xs sm:grid-cols-4">
-                <Stat label="Dist." value={formatDistance(selectedTrack.distance)} />
-                <Stat label="Tiempo" value={formatDuration(selectedTrack.duration)} />
-                <Stat label="Desnivel" value={`${Math.round(selectedTrack.elevationGain)} m`} />
-                <Stat
-                  label="Vel. media"
-                  value={
-                    selectedTrack.duration > 0
-                      ? `${((selectedTrack.distance / selectedTrack.duration) * 3.6).toFixed(1)} km/h`
-                      : "—"
+              <div className="p-5">
+                <dl className="grid grid-cols-2 gap-3 font-mono text-xs sm:grid-cols-4">
+                  <Stat label="Dist." value={formatDistance(selectedTrack.distance)} />
+                  <Stat label="Tiempo" value={formatDuration(selectedTrack.duration)} />
+                  <Stat label="Desnivel" value={`${Math.round(selectedTrack.elevationGain)} m`} />
+                  <Stat
+                    label="Vel. media"
+                    value={
+                      selectedTrack.duration > 0
+                        ? `${((selectedTrack.distance / selectedTrack.duration) * 3.6).toFixed(1)} km/h`
+                        : "—"
+                    }
+                  />
+                </dl>
+
+                <ShareTrack
+                  track={selectedTrack}
+                  onChange={(token) =>
+                    setTracks((prev) =>
+                      prev.map((t) =>
+                        t.id === selectedTrack.id ? { ...t, shareToken: token } : t,
+                      ),
+                    )
                   }
                 />
-              </dl>
-
-              <div className="mt-5">
-                <div className="mb-3 rounded-lg border border-border bg-elevated/40 p-3 text-sm">
-                  {!draft ? (
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-muted-foreground">
-                        Crea tus propios tramos y compáralos con el resto de salidas.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setDraft({ start: null, end: null, name: "" })}
-                        className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
-                      >
-                        Definir tramo
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="text-muted-foreground">
-                        Sitúa el punto en el mapa o en el perfil y marca el inicio y el fin.
-                      </p>
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                <div className="mt-5">
+                  <div className="mb-3 rounded-lg border border-border bg-elevated/40 p-3 text-sm">
+                    {!draft ? (
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-muted-foreground">
+                          Crea tus propios tramos y compáralos con el resto de salidas.
+                        </p>
                         <button
                           type="button"
-                          disabled={activePointIndex === null}
-                          onClick={() => setDraft((d) => d && { ...d, start: activePointIndex })}
-                          className="rounded-md border border-border px-3 py-1.5 hover:bg-elevated disabled:opacity-40"
+                          onClick={() =>
+                            setDraft({ start: 0, end: selectedTrack.points.length - 1, name: "" })
+                          }
+                          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
                         >
-                          Marcar inicio aquí
+                          Definir tramo
                         </button>
-                        <button
-                          type="button"
-                          disabled={activePointIndex === null}
-                          onClick={() => setDraft((d) => d && { ...d, end: activePointIndex })}
-                          className="rounded-md border border-border px-3 py-1.5 hover:bg-elevated disabled:opacity-40"
-                        >
-                          Marcar fin aquí
-                        </button>
-                        <span className="font-mono text-muted-foreground">
-                          {draft.start !== null
-                            ? `Inicio ${(selectedTrack.points[draft.start]!.d / 1000).toFixed(2)} km`
-                            : "Inicio —"}
-                          {" · "}
-                          {draft.end !== null
-                            ? `Fin ${(selectedTrack.points[draft.end]!.d / 1000).toFixed(2)} km`
-                            : "Fin —"}
-                        </span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <input
-                          value={draft.name}
-                          onChange={(e) => setDraft((d) => d && { ...d, name: e.target.value })}
-                          placeholder={`Mi tramo ${manualSegments.length + 1}`}
-                          aria-label="Nombre del tramo"
-                          className="min-w-40 flex-1 rounded-md border border-border bg-background px-2 py-1.5"
+                    ) : (
+                      <div className="space-y-2">
+                        <SegmentRange
+                          points={selectedTrack.points}
+                          start={draft.start ?? 0}
+                          end={draft.end ?? selectedTrack.points.length - 1}
+                          onChange={(start, end) => setDraft((d) => d && { ...d, start, end })}
                         />
-                        <button
-                          type="button"
-                          disabled={!draftValid || busy}
-                          onClick={saveDraft}
-                          className="rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-40"
-                        >
-                          Guardar tramo
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDraft(null)}
-                          className="rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground"
-                        >
-                          Cancelar
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <input
+                            maxLength={100}
+                            value={draft.name}
+                            onChange={(e) => setDraft((d) => d && { ...d, name: e.target.value })}
+                            placeholder={`Mi tramo ${manualSegments.length + 1}`}
+                            aria-label="Nombre del tramo"
+                            className="min-w-40 flex-1 rounded-md border border-border bg-background px-2 py-1.5"
+                          />
+                          <button
+                            type="button"
+                            disabled={!draftValid || busy}
+                            onClick={saveDraft}
+                            className="rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-40"
+                          >
+                            Guardar tramo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDraft(null)}
+                            className="rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
                       </div>
+                    )}
+                  </div>
+                  <ClientOnly
+                    fallback={<div className="h-72 w-full animate-pulse rounded-xl bg-elevated" />}
+                  >
+                    <Suspense
+                      fallback={
+                        <div className="h-72 w-full animate-pulse rounded-xl bg-elevated" />
+                      }
+                    >
+                      <SegmentMap
+                        path={selectedPath}
+                        color={selectedTrack.color}
+                        highlights={mapHighlights}
+                        activePoint={activeMapPoint}
+                        onPathSelect={selectNearestTrackPoint}
+                        className="h-80 w-full overflow-hidden rounded-xl sm:h-[420px]"
+                      />
+                    </Suspense>
+                  </ClientOnly>
+                  <div className="mt-3">
+                    <Suspense
+                      fallback={
+                        <div className="h-48 w-full animate-pulse rounded-lg bg-elevated" />
+                      }
+                    >
+                      <ElevationProfile
+                        points={selectedTrack.points}
+                        activeIndex={activePointIndex}
+                        onActiveIndexChange={setActivePointIndex}
+                        range={
+                          draft && draft.start !== null && draft.end !== null
+                            ? [draft.start, draft.end]
+                            : null
+                        }
+                      />
+                    </Suspense>
+                  </div>
+                  {selectedSegments.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className="h-1 w-4 rounded-full"
+                          style={{ backgroundColor: RANK_BEST }}
+                        />
+                        Mejor tiempo
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className="h-1 w-4 rounded-full"
+                          style={{ backgroundColor: RANK_MIDDLE }}
+                        />
+                        Intermedio
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className="h-1 w-4 rounded-full"
+                          style={{ backgroundColor: RANK_WORST }}
+                        />
+                        Peor tiempo
+                      </span>
                     </div>
                   )}
                 </div>
-                <ClientOnly
-                  fallback={<div className="h-72 w-full animate-pulse rounded-xl bg-elevated" />}
-                >
-                  <Suspense
-                    fallback={<div className="h-72 w-full animate-pulse rounded-xl bg-elevated" />}
-                  >
-                    <SegmentMap
-                      path={selectedPath}
-                      color={selectedTrack.color}
-                      highlights={mapHighlights}
-                      activePoint={activeMapPoint}
-                      onPathSelect={selectNearestTrackPoint}
-                      className="h-72 w-full overflow-hidden rounded-xl"
-                    />
-                  </Suspense>
-                </ClientOnly>
-                <div className="mt-3">
-                  <Suspense
-                    fallback={<div className="h-48 w-full animate-pulse rounded-lg bg-elevated" />}
-                  >
-                    <ElevationProfile
-                      points={selectedTrack.points}
-                      activeIndex={activePointIndex}
-                      onActiveIndexChange={setActivePointIndex}
-                      range={
-                        draft && draft.start !== null && draft.end !== null
-                          ? [draft.start, draft.end]
-                          : null
-                      }
-                    />
-                  </Suspense>
-                </div>
-                {selectedSegments.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span
-                        className="h-1 w-4 rounded-full"
-                        style={{ backgroundColor: RANK_BEST }}
-                      />
-                      Mejor tiempo
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <span
-                        className="h-1 w-4 rounded-full"
-                        style={{ backgroundColor: RANK_MIDDLE }}
-                      />
-                      Intermedio
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <span
-                        className="h-1 w-4 rounded-full"
-                        style={{ backgroundColor: RANK_WORST }}
-                      />
-                      Peor tiempo
-                    </span>
+
+                <h4 className="mt-6 font-display text-sm uppercase tracking-[0.22em] text-muted-foreground">
+                  Segmentos automáticos ({selectedSegments.length})
+                </h4>
+
+                {selectedSegments.length === 0 ? (
+                  <p className="mt-3 rounded-lg border border-border bg-elevated/50 p-4 text-sm text-muted-foreground">
+                    Esta salida no comparte tramos con el resto de recorridos cargados.
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    {selectedSegments.map((segment) => {
+                      const mine = segment.efforts.find((e) => e.trackId === selectedTrack.id)!;
+                      return (
+                        <div
+                          key={segment.id}
+                          className="rounded-xl border border-border bg-elevated/40 p-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <p className="font-display text-base">Tramo {segment.index}</p>
+                            <p className="flex flex-wrap gap-x-4 font-mono text-xs text-muted-foreground">
+                              <span className="inline-flex items-center gap-1">
+                                <ArrowDownUp className="size-3.5" />
+                                {formatDistance(segment.distance)}
+                              </span>
+                              <span className="inline-flex items-center gap-1">
+                                <Mountain className="size-3.5" />
+                                {Math.round(segment.elevationGain)} m D+
+                              </span>
+                              <span className="inline-flex items-center gap-1">
+                                <Gauge className="size-3.5" />
+                                {segment.avgGrade.toFixed(1)}%
+                              </span>
+                            </p>
+                          </div>
+                          <dl className="mt-3 grid grid-cols-3 gap-2 font-mono text-xs">
+                            <Stat
+                              label="Tu tiempo"
+                              value={mine.hasTime ? formatDuration(mine.duration) : "—"}
+                            />
+                            <Stat
+                              label="Dif. mejor"
+                              value={
+                                mine.isBest ? "Mejor" : mine.hasTime ? formatDelta(mine.delta) : "—"
+                              }
+                            />
+                            <Stat
+                              label="Vel. media"
+                              value={mine.speed ? `${mine.speed.toFixed(1)} km/h` : "—"}
+                            />
+                          </dl>
+                          <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+                            {segment.efforts
+                              .filter((e) => e.trackId !== selectedTrack.id)
+                              .map((e) => (
+                                <li key={e.trackId} className="flex items-center gap-2">
+                                  <span
+                                    className="size-2 rounded-full"
+                                    style={{ backgroundColor: e.color }}
+                                  />
+                                  <span className="truncate">{e.trackName}</span>
+                                  <span className="ml-auto font-mono">
+                                    {e.hasTime ? formatDuration(e.duration) : "—"}
+                                  </span>
+                                </li>
+                              ))}
+                          </ul>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
-              </div>
 
-              <h4 className="mt-6 font-display text-sm uppercase tracking-[0.22em] text-muted-foreground">
-                Tramos compartidos ({selectedSegments.length})
-              </h4>
-
-              {selectedSegments.length === 0 ? (
-                <p className="mt-3 rounded-lg border border-border bg-elevated/50 p-4 text-sm text-muted-foreground">
-                  Esta salida no comparte tramos con el resto de recorridos cargados.
-                </p>
-              ) : (
-                <div className="mt-3 space-y-3">
-                  {selectedSegments.map((segment) => {
-                    const mine = segment.efforts.find((e) => e.trackId === selectedTrack.id)!;
-                    return (
+                <h4 className="mt-6 font-display text-sm uppercase tracking-[0.22em] text-muted-foreground">
+                  Segmentos definidos por ti ({selectedManual.length})
+                </h4>
+                {selectedManual.length === 0 ? (
+                  <p className="mt-3 rounded-lg border border-border bg-elevated/50 p-4 text-sm text-muted-foreground">
+                    Aún no has definido tramos que pase esta salida. Pulsa "Definir tramo" junto al
+                    mapa.
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    {selectedManual.map(({ segment, efforts, mine }) => (
                       <div
                         key={segment.id}
                         className="rounded-xl border border-border bg-elevated/40 p-4"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                          <p className="font-display text-base">Tramo {segment.index}</p>
-                          <p className="flex flex-wrap gap-x-4 font-mono text-xs text-muted-foreground">
-                            <span className="inline-flex items-center gap-1">
-                              <ArrowDownUp className="size-3.5" />
-                              {formatDistance(segment.distance)}
-                            </span>
-                            <span className="inline-flex items-center gap-1">
-                              <Mountain className="size-3.5" />
-                              {Math.round(segment.elevationGain)} m D+
-                            </span>
-                            <span className="inline-flex items-center gap-1">
-                              <Gauge className="size-3.5" />
-                              {segment.avgGrade.toFixed(1)}%
-                            </span>
-                          </p>
+                          <p className="font-display text-base">{segment.name}</p>
+                          <div className="flex items-center gap-3 font-mono text-xs text-muted-foreground">
+                            <span>{formatDistance(segment.distance)}</span>
+                            <span>{Math.round(mine.elevationGain)} m D+</span>
+                            <span>{mine.avgGrade.toFixed(1)}%</span>
+                            <button
+                              type="button"
+                              aria-label={`Eliminar ${segment.name}`}
+                              onClick={() => void removeSegment(segment.id)}
+                              className="rounded p-1 hover:bg-elevated hover:text-foreground"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </div>
                         </div>
                         <dl className="mt-3 grid grid-cols-3 gap-2 font-mono text-xs">
                           <Stat
@@ -931,7 +1077,7 @@ export default function Dashboard({
                           />
                         </dl>
                         <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
-                          {segment.efforts
+                          {efforts
                             .filter((e) => e.trackId !== selectedTrack.id)
                             .map((e) => (
                               <li key={e.trackId} className="flex items-center gap-2">
@@ -942,89 +1088,23 @@ export default function Dashboard({
                                 <span className="truncate">{e.trackName}</span>
                                 <span className="ml-auto font-mono">
                                   {e.hasTime ? formatDuration(e.duration) : "—"}
+                                  {e.hasTime && !e.isBest ? ` (${formatDelta(e.delta)})` : ""}
                                 </span>
                               </li>
                             ))}
+                          {efforts.length === 1 && (
+                            <li>Ninguna otra salida pasa por este tramo.</li>
+                          )}
                         </ul>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              <h4 className="mt-6 font-display text-sm uppercase tracking-[0.22em] text-muted-foreground">
-                Mis tramos ({selectedManual.length})
-              </h4>
-              {selectedManual.length === 0 ? (
-                <p className="mt-3 rounded-lg border border-border bg-elevated/50 p-4 text-sm text-muted-foreground">
-                  Aún no has definido tramos que pase esta salida. Pulsa "Definir tramo" junto al
-                  mapa.
-                </p>
-              ) : (
-                <div className="mt-3 space-y-3">
-                  {selectedManual.map(({ segment, efforts, mine }) => (
-                    <div
-                      key={segment.id}
-                      className="rounded-xl border border-border bg-elevated/40 p-4"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="font-display text-base">{segment.name}</p>
-                        <div className="flex items-center gap-3 font-mono text-xs text-muted-foreground">
-                          <span>{formatDistance(segment.distance)}</span>
-                          <span>{Math.round(mine.elevationGain)} m D+</span>
-                          <span>{mine.avgGrade.toFixed(1)}%</span>
-                          <button
-                            type="button"
-                            aria-label={`Eliminar ${segment.name}`}
-                            onClick={() => void removeSegment(segment.id)}
-                            className="rounded p-1 hover:bg-elevated hover:text-foreground"
-                          >
-                            <Trash2 className="size-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                      <dl className="mt-3 grid grid-cols-3 gap-2 font-mono text-xs">
-                        <Stat
-                          label="Tu tiempo"
-                          value={mine.hasTime ? formatDuration(mine.duration) : "—"}
-                        />
-                        <Stat
-                          label="Dif. mejor"
-                          value={
-                            mine.isBest ? "Mejor" : mine.hasTime ? formatDelta(mine.delta) : "—"
-                          }
-                        />
-                        <Stat
-                          label="Vel. media"
-                          value={mine.speed ? `${mine.speed.toFixed(1)} km/h` : "—"}
-                        />
-                      </dl>
-                      <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
-                        {efforts
-                          .filter((e) => e.trackId !== selectedTrack.id)
-                          .map((e) => (
-                            <li key={e.trackId} className="flex items-center gap-2">
-                              <span
-                                className="size-2 rounded-full"
-                                style={{ backgroundColor: e.color }}
-                              />
-                              <span className="truncate">{e.trackName}</span>
-                              <span className="ml-auto font-mono">
-                                {e.hasTime ? formatDuration(e.duration) : "—"}
-                                {e.hasTime && !e.isBest ? ` (${formatDelta(e.delta)})` : ""}
-                              </span>
-                            </li>
-                          ))}
-                        {efforts.length === 1 && <li>Ninguna otra salida pasa por este tramo.</li>}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </section>
+        )}
+      </main>
     </div>
   );
 }

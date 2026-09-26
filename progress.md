@@ -1,5 +1,19 @@
 # VeloData frontend — progreso
 
+## Actualización UI — 2026-09-26 (desplegada)
+
+- Web activa: `velodata-web:ui-20260926-2`; API `velodata-api:ui-20260926-1`. HTTPS y servicios sanos.
+- Menú superior en escritorio y panel lateral accesible en móvil. Páginas SPA con URLs `#/`, `#/tracks`, `#/tracks/:id`, `#/segments`, `#/profile`, `#/upload`; historial del navegador y recarga directa del detalle. Login lleva al resumen.
+- Resumen independiente, tarjetas de rutas con minimapas que se cargan al entrar en pantalla y ordenación ascendente/descendente por fecha, distancia, velocidad y D+. Valores sin fecha/tiempos quedan al final.
+- Detalle de ruta en página, con enlace de vuelta, compartir, mapa/perfil y slider de dos extremos para guardar segmentos de al menos 100 m. Selección celeste en mapa y altitud, con teclado; actualizar el rango conserva el mapa y el zoom.
+- Mis segmentos separa los definidos por el usuario de los automáticos. Los manuales siguen guardados en API; automáticos se recalculan con el algoritmo existente.
+- Perfil permite cambiar contraseña actual/nueva/confirmación. API valida la actual y revoca todas las sesiones y enlaces de recuperación; se solicita nuevo login.
+- OSM: corregido `no-referrer` en HTML, Netlify y Caddy; `strict-origin-when-cross-origin` también explícito en teselas. Atribución visible y caché del navegador. Política contrastada: https://operations.osmfoundation.org/policies/tiles/ . Una tesela real con identificación VeloData/Referer devolvió mapa válido.
+- Validación: TypeScript, build local y Docker, ESLint de archivos cambiados sin incidencias; 3 tests frontend; 5 tests API. Chromium con API real y SQLite temporal: importación, páginas, ordenación, recarga/atrás, slider, mapa/perfil, guardado/persistencia, separación de segmentos, móvil y cambio de contraseña/relogin. Teselas interceptadas en prueba automatizada, verificando Referer.
+- Smoke HTTPS de producción: login, resumen, rutas, segmentos, perfil, menú móvil y logout; sin errores JS/CSP. Cuentas temporales eliminadas; contenedor y SQLite temporales retirados. Capturas: `/tmp/velodata-ui-check/` y `/tmp/velodata-ui-production/production-mobile-menu.png`.
+- No cambia el algoritmo de coincidencias ni sus límites. Próximos pasos opcionales previos (renombrar, copias externas, Netlify) siguen pendientes.
+
+
 2026-09-26: primera versión funcional desplegada en **https://velodata.jonvadillo.com**.
 
 Repositorio destino confirmado: **jvadillo/velodatafrontend** (creado por el usuario; nombre corregido respecto al pedido inicial). Carpeta local `/home/deploy/projects/velodatafronted`. Original `jvadillo/velodata` conservado como upstream, base 42dd71e. Publicado en GitHub, commit de implementación `24076df`; workflow de checks añadido (resultado remoto no consultado).
