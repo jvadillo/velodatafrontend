@@ -28,6 +28,15 @@ const SegmentMap = lazy(() => import("@/components/SegmentMap"));
 const ElevationProfile = lazy(() => import("@/components/ElevationProfile"));
 const SummaryChart = lazy(() => import("@/components/SummaryChart"));
 
+type SortKey = "date" | "distance" | "duration" | "elevation";
+
+const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
+  { key: "date", label: "Fecha" },
+  { key: "distance", label: "Distancia" },
+  { key: "duration", label: "Tiempo" },
+  { key: "elevation", label: "Desnivel" },
+];
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
@@ -56,6 +65,8 @@ function Index() {
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [showUploader, setShowUploader] = useState(true);
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [openSegment, setOpenSegment] = useState<string | null>(null);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
